@@ -1,0 +1,3203 @@
+# R code, without mutation rates#
+#
+n.traits <- 7#
+n.chains <- 1000#
+#
+variant.list <- letters[1:7]#
+initial.counts <- c(1, 2, 5, 10, 20, 40, 60)#
+names(initial.counts) <- variant.list#
+N <- sum(initial.counts)#
+#
+chain.table <- matrix(0, nrow=n.chains, ncol=n.traits)#
+colnames(chain.table) <- variant.list#
+#
+for(j in 1:n.chains){#
+#
+        running.counts <- initial.counts#
+#
+        for(i in 1:25){#
+#
+                my.prob <- running.counts # "neutral evolution", the markov process#
+                # my.prob <- initial.counts  # constant probability based on initial frequency#
+                # my.prob <- rep(1, 7)  # constant probability based on "equal fitness"#
+#
+                running.counts.prime <- rep(0, 7)#
+                names(running.counts.prime) <- variant.list#
+#
+                sampled <- table(sample(variant.list, N, replace=T, prob=my.prob))#
+                running.counts.prime[names(sampled)] <- sampled#
+#
+                running.counts <- running.counts.prime#
+#
+        }#
+#
+        chain.table[j,] <- running.counts.prime#
+#
+        if(j %%100==0) print(j)#
+#
+}#
+#
+# figure (a)#
+add <- runif(nrow(chain.table), 0.2, 0.8)-0.5#
+plot(rep(1,nrow(chain.table))+add, chain.table[,1], xlim=c(0.5,7.5), pch=20, ylim=c(0,138), cex=0.5)#
+for(i in 2:7){#
+ points(rep(i,nrow(chain.table))+add, chain.table[,i], xlim=c(0,8), pch=20, cex=0.5)#
+}#
+#
+# figure (b)#
+barplot(table(rowSums(chain.table!=0)))
+# figure (a)#
+add <- runif(nrow(chain.table), 0.2, 0.8)-0.5#
+plot(rep(1,nrow(chain.table))+add, chain.table[,1], xlim=c(0.5,7.5), pch=20, ylim=c(0,138), cex=0.5)#
+for(i in 2:7){#
+ points(rep(i,nrow(chain.table))+add, chain.table[,i], xlim=c(0,8), pch=20, cex=0.5)#
+}
+# functions that must be loaded before the Snoob Simulator can run#
+require(RColorBrewer)#
+age.pyramid <- function(ages, males, by.unit, sitename=""){#
+#
+	if(length(ages)==0 | length(males)==0) return()#
+	ages[ages==0] <- 1#
+#
+	plot.data <- table(ceiling(ages/by.unit)*by.unit, males)#
+	nonzero.groups <- as.numeric(rownames(plot.data))#
+	all.groups <- seq(by.unit, max(nonzero.groups), by=by.unit)#
+	zeros.data <- matrix(0, nrow=length(all.groups), ncol=2)#
+	colnames(zeros.data) <- c("0", "1")#
+	rownames(zeros.data) <- all.groups#
+	zeros.data[all.groups %in% nonzero.groups,] <- plot.data#
+	plot.data <- zeros.data#
+	if(dim(plot.data)[2]==1) plot.data <- cbind(plot.data, rep(0, dim(plot.data)[1]))#
+	# break up the men and women's jobs separately...#
+#
+	yt <- as.numeric(rownames(plot.data))#
+	yb <- c((min(yt)-by.unit),yt[-length(yt)])#
+	xl <- -plot.data[,1]#
+	xr <- plot.data[,2]#
+#
+	yt <- seq(by.unit, max(yt), by=by.unit)#
+	yb <- seq(0, max(yt)-by.unit, by=by.unit)#
+	xspan <- max(abs(min(xl)), max(xr))#
+	# ymax <- max(yt)#
+	ymax <- 90#
+#
+	plot(c(-xspan, xspan), c(0, ymax), type="n", yaxt="n", xaxt="n", main=paste(sitename, " age pyramid (n=", sum(!is.na(ages)), ")", sep=""), xlab="Individuals", ylab="", axes=F)#
+#
+	age.lab <- 1:(ymax/10)*10#
+	abline(h=age.lab, col="lightblue")#
+	text( rep(.9*max(xr), length(age.lab)), age.lab, labels=paste("Age", age.lab), pos=3, cex=.7, col="lightblue", offset=.2)#
+#
+	rect(-xr, yb, rep(0, length(yt)), yt, col="NA", border="blue", lty=2)#
+	rect(rep(0, length(yt)), yb, -xl, yt, col="NA", border="pink", lty=2)#
+	rect(xl, yb, rep(0, length(yt)), yt, col="pink", border=NA)#
+	rect(rep(0, length(yt)), yb, xr, yt, col="blue", border=NA)#
+	rect(xl, yb, xr, yt, col=NA, border="white")#
+#
+	tks <- min(xl):max(xr)#
+	tks[tks%%10==0]#
+	axis(1, at=tks[tks%%10==0], labels=abs(tks[tks%%10==0]))#
+#
+}#
+# need to make sure there's no census 0...#
+#
+decomp.grapher <- function(data, delta=T, line=FALSE, name="Spectral", cell.outline=1, my.order="float"){#
+#
+	og.data <- data#
+	data <- og.data#
+	phibar <- data[,1]#
+	data <- data[,-1] # drop first column#
+	n.terms <- ncol(data) #
+	n.cen <- nrow(data)#
+	my.colors <- sample(brewer.pal(n.terms, name))#
+	my.term.names <- colnames(data)#
+	## Ordering Schemes#
+	# Manual#
+	if(my.order == "manual"){#
+		my.I.order <- c(2,4,3,1)#
+		my.D.order <- c(1,3,4,2)#
+		positive.data <- data[,my.I.order]#
+		positive.data[positive.data < 0] <- 0#
+		negative.data <- data[,my.D.order]#
+		negative.data[negative.data > 0] <- 0#
+		color.matrix.I <- data#
+		color.matrix.D <- data#
+		for(i in 1:n.cen){#
+			color.matrix.I[i,] <- my.colors[my.I.order]#
+			color.matrix.D[i,] <- my.colors[my.D.order]#
+		}#
+	}#
+	# floating order scheme - order bars largest to smallest magnitude going out#
+	if(my.order == "float"){#
+		orders <- t(apply(data, 1, function(z) order(z, decreasing=T)))#
+		# modal.order <- apply(orders, 2, modal)#
+		# orders <- matrix(rep(modal.order, nrow(orders)), ncol=4, nrow=nrow(orders), byrow=T)#
+		data.ordered <- matrix(NA, nrow=n.cen, ncol=n.terms)#
+		for(i in 1:n.cen){#
+			current.values <- data[i,]#
+			data.ordered[i,] <- current.values[orders[i,]]#
+		}  # the data to plot is now organized in biggest to smallest, going left to right...but the columns no longer correspond to particular terms...only the #
+#
+		color.matrix.I <- orders#
+		for(i in 1:n.cen){#
+			color.matrix.I[i,] <- my.colors[orders[i,]]#
+		}#
+		positive.data <- data.ordered#
+		positive.data[positive.data < 0] <- 0#
+		negative.data <- data.ordered[,n.terms:1]#
+		negative.data[negative.data > 0] <- 0#
+		color.matrix.D <- color.matrix.I[,n.terms:1]#
+	}#
+	# according to the ordering scheme, populate the y.starts matrix#
+	censuses <- as.numeric(rownames(data))#
+	x.starts <- censuses - 0.5#
+	x.stops <- censuses + 0.5#
+	y.stops.I <- t(apply(positive.data, 1, cumsum))#
+	y.stops.I <- cbind(rep(0, n.cen), y.stops.I)#
+	y.stops.D <- t(apply(negative.data, 1, cumsum))#
+	y.stops.D <- cbind(rep(0, n.cen), y.stops.D)#
+	# right now, for each census, it decides of the four terms which has the largest mag, then the next largest, then the next, and calls their values from data.ordered in that order.  It does this for both positive and negative.  What I WANT it to do is always use the same order for positive and negative mags...#
+	delta.phibar <- diff(phibar)#
+	dev.new()#
+	par(mfrow=c(2,2))#
+#
+	# First Graph: Frequency over Time#
+	scalar <- 7#
+	plot(censuses, phibar, type="l", las=1, ylim=c(0, 1), yaxt="n", ylab="", xlab="year", col="black", main="frequency of trait among individuals", frame.plot=FALSE, xaxt="n")#
+	axis(2, at=c(seq(0,1, by=0.125)), tcl=-.25, labels=FALSE)#
+	axis(2, at=c(seq(0,1, by=0.25)), las=1)#
+	axis(1, at=c(seq(0, n.cen, by=5)), label=c(seq(0, n.cen, by=5)*5))#
+	axis(2, at=c(0.5+0.01, 0.5+0.01*scalar), las=1)#
+	cell.outline=1#
+	y.stops.I2 <- scalar*y.stops.I#
+	y.stops.D2 <- scalar*y.stops.D#
+	for(i in 1:n.terms){#
+		rect(xleft=x.starts, xright=x.stops, ybottom=phibar+c(y.stops.I2[-1,i], 0), ytop=phibar+c(y.stops.I2[-1,i+1], 0), lty=cell.outline, col=color.matrix.I[-1,i], border="gray4")#
+		rect(xleft=x.starts, xright=x.stops, ybottom=phibar+c(y.stops.D2[-1,i], 0), ytop=phibar+c(y.stops.D2[-1,i+1], 0), lty=cell.outline, col=color.matrix.D[-1,i], border="gray4")#
+	}	#
+#
+	points(censuses, phibar, type="p", pch=20, cex=1)#
+	text(locator(1), label="Bar heights magnified by a factor of 7")#
+	o <- order(colMeans(data, na.rm=T), decreasing=T)#
+#
+	ordered.names <- my.term.names[o]#
+	ordered.colors <- my.colors[o]#
+	textbox.col <- "black"#
+	if(cell.outline==0) textbox.col <- "white"#
+	for(i in 1:n.terms){#
+		loc <- locator(1)#
+		if(i ==1) record <- loc#
+		my.pos <- xy.coords(loc$x, record$y)#
+		points(my.pos, pch=22, bg=ordered.colors[i], col=textbox.col, cex=1.5)#
+		text(my.pos, labels=ordered.names[i], pos=4)#
+	}#
+	# Second Graph: Delta Decomposition#
+	cell.outline=1#
+	plot(as.numeric(names(delta.phibar)), delta.phibar, type="l", las=1, ylab="change in trait frq.", xlab="year", col="white", main="frequency delta decomposition", frame.plot=FALSE, ylim=c(min(y.stops.D, na.rm=T), max(y.stops.I, na.rm=T)), xaxt="n")#
+	axis(1, at=c(seq(0, n.cen, by=5)), label=c(seq(0, n.cen, by=5)*5))#
+#
+	for(i in 1:n.terms){#
+		rect(xleft=x.starts, xright=x.stops, ybottom=y.stops.I[,i], ytop=y.stops.I[,i+1], lty=cell.outline, col=color.matrix.I[,i], border="gray4")#
+		rect(xleft=x.starts, xright=x.stops, ybottom=y.stops.D[,i], ytop=y.stops.D[,i+1], lty=cell.outline, col=color.matrix.D[,i], border="gray4")#
+	}	#
+	o <- order(colMeans(data, na.rm=T), decreasing=T)#
+#
+	ordered.names <- my.term.names[o]#
+	ordered.colors <- my.colors[o]#
+	textbox.col <- "black"#
+	if(cell.outline==0) textbox.col <- "white"#
+	for(i in 1:n.terms){#
+		loc <- locator(1)#
+		if(i ==1) record <- loc#
+		my.pos <- xy.coords(loc$x, record$y)#
+		points(my.pos, pch=22, bg=ordered.colors[i], col=textbox.col, cex=1.5)#
+		text(my.pos, labels=ordered.names[i], pos=4)#
+	}#
+	# Third Plot#
+	o <- order(colMeans(data, na.rm=T), decreasing=T)#
+#
+	data.plot <- data[,o]#
+	# boxplot.border.colors <- ifelse(cell.outline==1, rep("black", length(my.colors)), my.colors[o])#
+	boxplot.border.colors <- my.colors[o]#
+	if(cell.outline==1) boxplot.border.colors <- "black"#
+	my.box <- boxplot(data.plot, col=my.colors[o], border=boxplot.border.colors, pch=20, main="average effect on trait frequency", xaxt="n", xlab="", las=1, frame.plot=FALSE, cex=1, ylim=c(lb1, ub2), lty=1)#
+# 	boxplot(data.plot, col=my.colors[o], pch=20, main="Average Effect on Trait Frequency", xaxt="n", xlab="", border=my.colors[o], las=1)#
+	medians <- my.box$stats[3,]#
+	abline(h=0, lty=2, col=gray(.35))#
+	boxplot(data.plot, col=my.colors[o], pch=20, main="average effect on trait frequency", add=T,  xlab="", border=boxplot.border.colors, las=1, frame.plot=FALSE, xaxt="n", cex=1, ylim=c(lb1, ub2), lty=1)#
+	axis(1, at=c(1:n.terms), labels=structure.names[o], tick=FALSE)#
+	width <- 0.4#
+	x.box.starts <- 1:n.terms - width#
+	x.box.stops <- 1:n.terms + width#
+	ordered.colors <- my.colors[o]#
+	for(i in 1:n.terms){#
+	  points(c(x.box.starts[i], x.box.stops[i]), c(medians[i], medians[i]), type="l", col=ordered.colors[i], lwd=3)#
+	}#
+	means <- colMeans(data.plot, na.rm=T)#
+	for(i in 1:n.terms){#
+		points(c(x.box.starts[i], x.box.stops[i]), c(means[i], means[i]), type="l", col="black", lwd=2)#
+	}#
+	# Fourth Plot#
+	force.percent.data <- abs(data)/rowSums(abs(data), na.rm=T)#
+	data <- force.percent.data#
+	orders <- t(apply(data, 1, function(z) order(z, decreasing=T)))#
+	o <- order(colMeans(force.percent.data, na.rm=T), decreasing=T)#
+	for(i in 1:dim(orders)[1]){#
+		orders[i,] <- o#
+	}#
+	data.plot <- matrix(NA, nrow=dim(data)[1], ncol=dim(data)[2])#
+	for(i in 1:dim(orders)[1]){#
+		current.values <- data[i,]#
+		data.plot[i,] <- current.values[orders[i,]]#
+	}#
+	color.matrix <- orders#
+	for(i in 1:dim(orders)[1]){#
+		color.matrix[i,] <- my.colors[orders[i,]]#
+	}#
+	index <- 2:((n.terms)*2)#
+	for(i in index){#
+		pos <- which(data.plot[,my.colnames[i]] >= 0)#
+		if(i %% 2 == 0){#
+			if(length(pos) > 0){#
+				y.starts[pos,i:max(index)] <- y.starts[pos,i-1]+data.plot[pos,my.colnames[i]]#
+			}#
+		}#
+	}#
+	plot(censuses, graph.data, type="l", las=1, ylim=c(0,1), ylab="%", xlab="census", col="white", main="relative size of force categories", yaxt="n", frame.plot=FALSE)#
+	ats <- seq(0, 1, by=0.2)#
+	axis(2, at=ats, labels=100*ats, las=1) #
+	# axis(1, at=c(censuses))#
+	index <- 1:(2*n.terms)#
+	index <- index[index%%2==1]#
+	for(i in index){#
+		rect(xleft=x.starts, xright=x.stops, ybottom=y.starts[,i], ytop=y.starts[,i+1], col=color.matrix[,my.colnames[i]], lty=cell.outline)#
+# 		rect(xleft=x.starts, xright=x.stops, ybottom=float+y.starts[,(i+2*n.terms)], ytop=float+y.starts[,(i+2*n.terms+1)], col=color.matrix[,my.colnames[max.index+1-(i+2*n.terms)]], lty=0)#
+	}	#
+}#
+old.decomp.grapher <- function(data, delta=T, line=FALSE, name="Spectral", cell.outline=1){#
+#
+	censuses <- as.numeric(rownames(data))#
+	p <- data[,1]#
+	x.starts <- censuses - 0.5#
+	x.stops <- censuses + 0.5#
+#
+	n.parts <- dim(data)[2] - 1#
+	n.I <- n.parts#
+	n.D <- n.parts#
+#
+	y.starts <- matrix(0, nrow=length(censuses), ncol=(n.parts*4))#
+	rownames(y.starts) <- censuses#
+#
+	my.colnames <- rep(sort(rep(1:n.parts, 2)), 2)#
+	colnames(y.starts) <- my.colnames#
+	data.red <- data[,-1] # sort it how you want#
+	structure.names <- colnames(data.red)#
+	colnames(data.red) <- structure.names#
+	orders <- t(apply(data.red, 1, function(z) order(z, decreasing=T)))#
+	# modal.order <- apply(orders, 2, modal)#
+	# orders <- matrix(rep(modal.order, nrow(orders)), ncol=4, nrow=nrow(orders), byrow=T)#
+	data.plot <- matrix(NA, nrow=dim(data.red)[1], ncol=dim(data.red)[2])#
+	for(i in 1:dim(orders)[1]){#
+		current.values <- data.red[i,]#
+		data.plot[i,] <- current.values[orders[i,]]#
+	}#
+	# the data to plot is now organized in biggest to smallest, going left to right...but the columns no longer correspond to particular terms#
+	# color.vector <- sample(c("blue", "darkblue", "darkred", "red", "cadetblue", "chartreuse2", "deeppink4", "goldenrod1"))#
+	# my.colors <- color.vector[1:n.parts]#
+	my.colors <- sample(brewer.pal(n.parts, name))#
+	color.matrix <- orders#
+	for(i in 1:dim(orders)[1]){#
+		color.matrix[i,] <- my.colors[orders[i,]]#
+	}#
+	index <- 2:((n.parts)*2)#
+	for(i in index){#
+		pos <- which(data.plot[,my.colnames[i]] > 0)#
+		if(i %% 2 == 0){#
+			if(length(pos) > 0){#
+				y.starts[pos,i:max(index)] <- y.starts[pos,i-1]+data.plot[pos,my.colnames[i]]#
+			}#
+		}#
+	}#
+	index <- 2*n.parts+2:((n.parts)*2)#
+	max.index <- max(index)#
+	for(i in index){#
+		neg <- which(data.plot[,my.colnames[max.index+1-i]] < 0)#
+		if(i %% 2 == 0){#
+			if(length(neg) > 0){#
+				y.starts[neg,i:max(index)] <- y.starts[neg,i-1]+data.plot[neg,my.colnames[max.index+1-i]]#
+			}#
+		}	#
+	}#
+	# right now, for each census, it decides of the four terms which has the largest mag, then the next largest, then the next, and calls their values from data.plot in that order.  It does this for both positive and negative.  What I WANT it to do is always use the same order for positive and negative mags...#
+	upper <- max(y.starts[,(1:n.parts)*2])#
+	lower <- min(y.starts[,(1:n.parts)*2 + 2*n.parts])#
+#
+	lag <- diff(p)#
+	graph.data <- c(lag, 0)#
+	float <- 0#
+	if(delta==FALSE) float <- p	#
+	censuses.plot <- as.numeric(names(graph.data))#
+	# par(bg="#FCFCFC")  # aka gray(.9) 	 	 #
+	dev.new()#
+	par(mfrow=c(2,2))#
+#
+	lb1 <- min(float)+min(y.starts)#
+	ub2 <- (max(float)+max(y.starts))#
+	# First Graph: Frequency Decomposition#
+	plot(censuses.plot, p, type="l", las=1, ylim=c(0, 1), yaxt="n", ylab="", xlab="census", col="black", main="frequency of trait among individuals", frame.plot=FALSE, xlim=c(min(na.omit(censuses.plot)), max(na.omit(censuses.plot))))#
+	#abline(h=1, col="gray")#
+	#abline(h=0, col="gray")#
+	axis(2, at=c(seq(0,1, by=0.125)), tcl=-.25, labels=FALSE)#
+	axis(2, at=c(seq(0,1, by=0.25)), las=1)#
+	# axis(1, at=c(censuses.plot))#
+	# Second Graph: Delta Decomposition#
+	plot(censuses.plot, graph.data, type="l", las=1, ylim=c(lb1, ub2*1.3), ylab="change in trait frq.", xlab="census", col="white", main="frequency delta decomposition", frame.plot=FALSE)#
+# 	axis(1, at=c(censuses.plot))#
+	index <- 1:(2*n.parts)#
+	index <- index[index%%2==1]#
+	for(i in index){#
+		rect(xleft=x.starts, xright=x.stops, ybottom=float+y.starts[,i], ytop=float+y.starts[,i+1], col=color.matrix[,my.colnames[i]], lty=cell.outline)#
+		rect(xleft=x.starts, xright=x.stops, ybottom=float+y.starts[,(i+2*n.parts)], ytop=float+y.starts[,(i+2*n.parts+1)], col=color.matrix[,my.colnames[max.index+1-(i+2*n.parts)]], lty=cell.outline)#
+	}	#
+#
+	abline(h=0, col="white", lwd=1)#
+#
+	if(delta==T & line==T) points(rowSums(data.plot, na.rm=T), pch=20, col="white", type="o")#
+	if(delta==FALSE & line==T) points(p, pch=20, col="white", type="o")#
+	o <- order(colMeans(data.red, na.rm=T), decreasing=T)#
+#
+	ordered.names <- structure.names[o]#
+	ordered.colors <- my.colors[o]#
+	textbox.col <- "black"#
+	if(cell.outline==0) textbox.col <- "white"#
+	for(i in 1:n.parts){#
+		loc <- locator(1)#
+		if(i ==1) record <- loc#
+		my.pos <- xy.coords(loc$x, record$y)#
+		points(my.pos, pch=22, bg=ordered.colors[i], col=textbox.col, cex=1.5)#
+		text(my.pos, labels=ordered.names[i], pos=4)#
+	}#
+#	points(censuses.plot, graph.data, type="l", col="white", lwd=1)#
+#
+	# ub <- max(data[,2:(n.parts+1)], na.rm=T)#
+	# lb <- min(data[,2:(n.parts+1)], na.rm=T)#
+#
+	# plot(censuses.plot, data[,2], type="l", col=my.colors[1], ylim=c(lb, ub), las=1, ylab="Change in Trait Frq.", xlab="", xlim=c(min(na.omit(censuses.plot), na.rm=T), 2+max(censuses.plot, na.rm=T)))#
+	# abline(h=0)#
+	# points(censuses.plot, data[,3], type="l", col=my.colors[2])#
+	# points(censuses.plot, data[,4], type="l", col=my.colors[3])#
+	# points(censuses.plot, data[,5], type="l", col=my.colors[4])#
+	# points(censuses.plot, data[,6], type="l", col=my.colors[5])#
+	# points(censuses.plot, data[,7], type="l", col=my.colors[6])#
+	# points(censuses.plot, data[,8], type="l", col=my.colors[7])#
+#
+	# means <- colMeans(data, na.rm=T)#
+	# means <- means[-1]#
+	# axis(4, at=means, labels=NA, las=1, tck=0.03)#
+	# points(rep(2+max(censuses.plot, na.rm=T), length(means)), means, pch=22, bg=my.colors)#
+	data.red <- data[,-1]#
+	colnames(data.red) <- structure.names#
+	o <- order(colMeans(data.red, na.rm=T), decreasing=T)#
+#
+	data.red.plot <- data.red[,o]#
+	# boxplot.border.colors <- ifelse(cell.outline==1, rep("black", length(my.colors)), my.colors[o])#
+	boxplot.border.colors <- my.colors[o]#
+	if(cell.outline==1) boxplot.border.colors <- "black"#
+	my.box <- boxplot(data.red.plot, col=my.colors[o], border=boxplot.border.colors, pch=20, main="average effect on trait frequency", xaxt="n", xlab="", las=1, frame.plot=FALSE, cex=1, ylim=c(lb1, ub2), lty=1)#
+# 	boxplot(data.red.plot, col=my.colors[o], pch=20, main="Average Effect on Trait Frequency", xaxt="n", xlab="", border=my.colors[o], las=1)#
+	medians <- my.box$stats[3,]#
+	abline(h=0, lty=2, col=gray(.35))#
+	boxplot(data.red.plot, col=my.colors[o], pch=20, main="average effect on trait frequency", add=T,  xlab="", border=boxplot.border.colors, las=1, frame.plot=FALSE, xaxt="n", cex=1, ylim=c(lb1, ub2), lty=1)#
+	axis(1, at=c(1:n.parts), labels=structure.names[o], tick=FALSE)#
+	width <- 0.4#
+	x.box.starts <- 1:n.parts - width#
+	x.box.stops <- 1:n.parts + width#
+	ordered.colors <- my.colors[o]#
+	for(i in 1:n.parts){#
+	  points(c(x.box.starts[i], x.box.stops[i]), c(medians[i], medians[i]), type="l", col=ordered.colors[i], lwd=3)#
+	}#
+	means <- colMeans(data.red.plot, na.rm=T)#
+	for(i in 1:n.parts){#
+		points(c(x.box.starts[i], x.box.stops[i]), c(means[i], means[i]), type="l", col="black", lwd=2)#
+	}#
+	data.red <- data[,-1]#
+	force.percent.data <- abs(data.red)/rowSums(abs(data.red), na.rm=T)#
+	data.red <- force.percent.data#
+	orders <- t(apply(data.red, 1, function(z) order(z, decreasing=T)))#
+	o <- order(colMeans(force.percent.data, na.rm=T), decreasing=T)#
+	for(i in 1:dim(orders)[1]){#
+		orders[i,] <- o#
+	}#
+	data.plot <- matrix(NA, nrow=dim(data.red)[1], ncol=dim(data.red)[2])#
+	for(i in 1:dim(orders)[1]){#
+		current.values <- data.red[i,]#
+		data.plot[i,] <- current.values[orders[i,]]#
+	}#
+	color.matrix <- orders#
+	for(i in 1:dim(orders)[1]){#
+		color.matrix[i,] <- my.colors[orders[i,]]#
+	}#
+	index <- 2:((n.parts)*2)#
+	for(i in index){#
+		pos <- which(data.plot[,my.colnames[i]] >= 0)#
+		if(i %% 2 == 0){#
+			if(length(pos) > 0){#
+				y.starts[pos,i:max(index)] <- y.starts[pos,i-1]+data.plot[pos,my.colnames[i]]#
+			}#
+		}#
+	}#
+	plot(censuses.plot, graph.data, type="l", las=1, ylim=c(0,1), ylab="%", xlab="census", col="white", main="relative size of force categories", yaxt="n", frame.plot=FALSE)#
+	ats <- seq(0, 1, by=0.2)#
+	axis(2, at=ats, labels=100*ats, las=1) #
+	# axis(1, at=c(censuses.plot))#
+	index <- 1:(2*n.parts)#
+	index <- index[index%%2==1]#
+	for(i in index){#
+		rect(xleft=x.starts, xright=x.stops, ybottom=y.starts[,i], ytop=y.starts[,i+1], col=color.matrix[,my.colnames[i]], lty=cell.outline)#
+# 		rect(xleft=x.starts, xright=x.stops, ybottom=float+y.starts[,(i+2*n.parts)], ytop=float+y.starts[,(i+2*n.parts+1)], col=color.matrix[,my.colnames[max.index+1-(i+2*n.parts)]], lty=0)#
+	}	#
+}#
+# need to include an age cutoff for the new one#
+decomposer <- function(data, check=F, drop.empty=T){#
+#
+	# if grouping is not NA, then decomposer needs to modify the states to reflect transfers!  #
+#
+	grouping <- NA#
+	if("group.id" %in% colnames(data)) grouping <- "group.id"#
+	full.census.data <- as.numeric(data[,"census"])#
+	full.phenotype.data <- as.numeric(data[,"phi"])#
+	full.census.list <- sort(unique(full.census.data))#
+	census.phenotype.frqs <- mean(full.phenotype.data[full.census.data==full.census.list[1]])#
+	n.censuses <- length(full.census.list)#
+	full.state.data <- as.numeric(data[,"state"])#
+#
+	output.table <- matrix(NA, ncol=6+3, nrow=n.censuses)#
+	colnames(output.table) <- c("p", "rho", "emig", "immig", "RS", "delta", "mortality", "predicted", "actual")#
+	if(!is.na(grouping)){#
+		full.group.data <- as.numeric(data[,grouping])#
+		full.group.list <- sort(unique(full.group.data))#
+		n.groups <- length(full.group.list)#
+		group.table <- matrix(NA, ncol=n.groups, nrow=17)#
+		rownames(group.table) <- c("lp.n", "tp.n", "lp.phi.bar", "tp.phi.bar", "Delta.phi.bar", "lp.c", "tp.c", "Delta.c", "G", "i", "e", "b", "d", "a", "rho.bar.a", "r", "rho.bar")#
+		colnames(group.table) <- full.group.list#
+		output.table <- matrix(NA, ncol=11+3, nrow=n.censuses)#
+		colnames(output.table) <- c("p", "r.s", "r.t", "I", "i", "E", "e", "RS", "rs", "D", "d", "de", "predicted", "actual")#
+#
+	}#
+	for(t in 2:n.censuses){#
+#
+		lp.rows <- which(full.census.data==full.census.list[t-1])#
+		lp.phi.data <- as.numeric(data[lp.rows,"phi"])#
+		lp.state <- as.numeric(data[lp.rows, "state"])#
+		lp.active <- which(lp.state!=2 & lp.state!=3)#
+		lp.n <- length(na.omit(lp.phi.data[lp.active]))#
+#
+		tp.rows <- which(full.census.data==full.census.list[t])#
+		tp.phi.data <- as.numeric(data[tp.rows,"phi"])#
+		tp.state <- as.numeric(data[tp.rows, "state"])#
+		tp.active <- which(tp.state!=2 & tp.state!=3)#
+		tp.n <- length(na.omit(tp.phi.data[tp.active]))#
+		lp.phi.bar <- mean(lp.phi.data[lp.active])#
+		tp.phi.bar <- mean(tp.phi.data[tp.active])#
+		census.phenotype.frqs <- c(census.phenotype.frqs, tp.phi.bar)#
+#
+		Delta.phi.bar <- tp.phi.bar - lp.phi.bar#
+		G <- tp.n/lp.n#
+#
+		r <- sum(tp.state==0 | tp.state==1)/lp.n#
+		tp.rhos <- as.numeric(data[tp.rows,"i.change"])#
+		tp.rho.bar <- mean(tp.rhos[tp.active], na.rm=T)#
+		e <- sum(tp.state==2)/lp.n#
+		phi.bar.e <- mean(tp.phi.data[tp.state==2])#
+		d <- sum(tp.state==3)/lp.n#
+		phi.bar.d <- mean(tp.phi.data[tp.state==3])#
+		i <- sum(tp.state==4)/lp.n#
+		phi.bar.i <- mean(tp.phi.data[tp.state==4])#
+		b <- sum(tp.state==5)/lp.n#
+		phi.bar.b <- mean(tp.phi.data[tp.state==5])#
+		lp.b.data <- as.numeric(data[lp.rows,"n.kids"])/2#
+		phi.bar.bu <- sum(lp.b.data*lp.phi.data)/sum(tp.state==5)#
+		tp.m.deltas <- as.numeric(data[tp.rows, "m.delta"])#
+		tp.f.deltas <- as.numeric(data[tp.rows, "f.delta"])#
+		tp.delta.bar <- sum(c(tp.m.deltas, tp.f.deltas), na.rm=T)/sum(tp.state==5)#
+		# single-level BDICE#
+		immigration <- i*(phi.bar.i - lp.phi.bar)#
+		emigration <- e*(phi.bar.e - lp.phi.bar)*(-1)#
+		reproductive.success <- b*(phi.bar.bu - lp.phi.bar)#
+		biased.transmission <- b*tp.delta.bar/2#
+		mortality <- d*(phi.bar.d - lp.phi.bar)*(-1)#
+		individual.change <- r*tp.rho.bar#
+		predicted <- sum(immigration, emigration, reproductive.success, biased.transmission, mortality, individual.change, na.rm=T)*(1/G)#
+		if(is.na(grouping)){#
+			output.table[t,] <- c(0, individual.change, emigration, immigration, reproductive.success, biased.transmission, mortality, predicted, Delta.phi.bar)#
+		}#
+		# c("i.change", "emig", "immig", "RS", "trans.bias", "mortality", "predicted", "actual")#
+		if(!is.na(grouping)){#
+			for(j in 1:n.groups){#
+				glp.rows <- which(full.census.data==full.census.list[t-1] & full.group.data==full.group.list[j])#
+				gtp.rows <- which(full.census.data==full.census.list[t] & full.group.data==full.group.list[j])#
+				glp.state <- as.numeric(data[glp.rows, "state"])#
+				gtp.state <- as.numeric(data[gtp.rows, "state"])#
+				glp.active <- which(glp.state!=2 & glp.state!=3)#
+				gtp.active <- which(gtp.state!=2 & gtp.state!=3)#
+				glp.phi.data <- as.numeric(data[glp.rows,"phi"])#
+				gtp.phi.data <- as.numeric(data[gtp.rows,"phi"])#
+				glp.n <- length(na.omit(glp.phi.data[glp.active]))#
+				gtp.n <- length(na.omit(gtp.phi.data[gtp.active]))#
+				g.G <- gtp.n/glp.n#
+				glp.phi.bar <- mean(glp.phi.data[glp.active], na.rm=T)		#
+				gtp.phi.bar <- mean(gtp.phi.data[gtp.active], na.rm=T)#
+				g.Delta.phi.bar <- gtp.phi.bar - glp.phi.bar#
+				glp.c <- glp.n/lp.n#
+				gtp.c <- gtp.n/tp.n#
+				Delta.c <- gtp.c - glp.c#
+	# 0 - remaining, no group transfer#
+	# 1 - remaining, transfered groups#
+	# 2 - emigrated #
+	# 3 - died #
+	# 4 - immigrated #
+	# 5 - born #
+				g.r <- sum(gtp.state==0)/glp.n#
+				g.a <- sum(gtp.state==1)/glp.n#
+				gtp.rhos <- as.numeric(data[gtp.rows,"i.change"])#
+				gtp.rho.bar.s <- mean(gtp.rhos[gtp.state==0], na.rm=T)#
+				gtp.rho.bar.a <- mean(gtp.rhos[gtp.state==1], na.rm=T)#
+				g.e <- sum(gtp.state==2)/glp.n#
+				g.d <- sum(gtp.state==3)/glp.n#
+				g.i <- sum(gtp.state==4)/glp.n#
+				g.b <- sum(gtp.state==5)/glp.n#
+				group.table[,j] <- c(glp.n, gtp.n, glp.phi.bar, gtp.phi.bar, g.Delta.phi.bar, glp.c, gtp.c, Delta.c, g.G, g.i, g.e, g.b, g.d, g.a, gtp.rho.bar.a, g.r, gtp.rho.bar.s)#
+				# c("lp.n", "tp.n", "lp.phi.bar", "tp.phi.bar", "Delta.phi.bar", "lp.c", "tp.c", "Delta.c", "G", "i", "e", "b", "d", "a", "rho.bar.a", "r", "rho.bar")#
+			}#
+			# The Baldini Equation#
+			# sum(group.table["Delta.c",]*group.table["lp.phi.bar",]) + sum(group.table["tp.c",]*group.table["Delta.phi.bar",])#
+			# multilevel, my version#
+			sessile.i.change <- sum(group.table["r",]*group.table["rho.bar",]*group.table["lp.c",], na.rm=T)#
+			transfer.i.change <- sum(group.table["a",]*group.table["rho.bar.a",]*group.table["lp.c",], na.rm=T)#
+			cow.immig <- sum(group.table["i",]*group.table["lp.phi.bar",]*group.table["lp.c",], na.rm=T) - i*lp.phi.bar#
+			ew.immig <- i*phi.bar.i - sum(group.table["i",]*group.table["lp.phi.bar",]*group.table["lp.c",], na.rm=T)#
+			cow.emig <- sum(group.table["e",]*group.table["lp.phi.bar",]*group.table["lp.c",], na.rm=T) - e*lp.phi.bar#
+			ew.emig <- e*phi.bar.e - sum(group.table["e",]*group.table["lp.phi.bar",]*group.table["lp.c",], na.rm=T)#
+			cow.birth <- sum(group.table["b",]*group.table["lp.phi.bar",]*group.table["lp.c",], na.rm=T) - b*lp.phi.bar#
+			ew.birth <- b*phi.bar.bu - sum(group.table["b",]*group.table["lp.phi.bar",]*group.table["lp.c",], na.rm=T)#
+			cow.death <- sum(group.table["d",]*group.table["lp.phi.bar",]*group.table["lp.c",], na.rm=T) - d*lp.phi.bar#
+			ew.death <- d*phi.bar.d - sum(group.table["d",]*group.table["lp.phi.bar",]*group.table["lp.c",], na.rm=T)#
+			predicted <- sum(sessile.i.change, transfer.i.change, cow.immig, ew.immig, -1*cow.emig, -1*ew.emig, cow.birth, ew.birth, -1*cow.death, -1*ew.death, biased.transmission, na.rm=T)*(1/G)	#
+			output.table[t,] <- c(0, sessile.i.change, transfer.i.change, cow.immig, ew.immig, -1*cow.emig, -1*ew.emig, cow.birth, ew.birth, -1*cow.death, -1*ew.death, biased.transmission, predicted, Delta.phi.bar)	#
+			# c("p", "s.change", "t.change", "cow.i", "ew.i", "cow.e", "ew.e", "cow.b", "ew.b", "cow.d", "ew.d", "trans.bias", "predicted", "actual")#
+		}#
+		print(full.census.list[t])#
+	}#
+	output.table[,"p"] <- census.phenotype.frqs#
+	if(check==F){#
+		cols <- dim(output.table)[2]#
+		output.table <- output.table[,-c(cols-1, cols)]#
+	}#
+	rownames(output.table) <- full.census.list#
+	if(any(!apply(output.table, 2, function(z) any(!is.na(z)))) & drop.empty){#
+		output.table <- output.table[,-which(!apply(output.table, 2, function(z) any(!is.na(z))))]#
+	}#
+	if(any(!apply(output.table, 2, function(z) any(z!=0 & !is.na(z)))) & drop.empty){#
+		output.table <- output.table[,-which(!apply(output.table, 2, function(z) any(z!=0 & !is.na(z))))]#
+	}#
+	output.table#
+}#
+# ah, a problem.  I need to classify everyone who was "born" but whose parents were not in the population at the last census as an immigrant!#
+# another problem: individuals who in the population as deaths or emigrants but were not present in the previous time census should be dropped#
+#
+BDICE.sim.decomp.prepper <- function(data, phenotype="snoob", grouping=NA){#
+	# 00. age cutoffs have to go in here...#
+	# need to ID a group variable here, and then DON'T specify one in the actual decomposer (the prepper will be the only function to call a group)#
+#
+		# needs to turn the simulation data into the prepped data needed for decomposer#
+#
+		# BDICE sim: #
+		# census id state mom dad age last.im last.em died male mate counter zygotes h.gene height snoob language t3 #
+		# desired variables: #
+		# census id state mid fid m.delta f.delta i.change n.kids phenotype   and a grouping variable#
+	# 0. specify a variable to be called "phenotype", #
+	# 1. state has to be translated: #
+	# State Codes:#
+	# Dead - 0#
+	# Active - 1#
+	# Pregnant - 2#
+	# Emigrant - 11#
+#
+	# 0 - remaining, no group transfer#
+	# 1 - remaining, transfered groups#
+	# 2 - emigrated #
+	# 3 - died #
+	# 4 - immigrated #
+	# 5 - born #
+	age.cutoff <- 0#
+	drop.rows <- which(data[,"age"] < age.cutoff*365)#
+	if(length(drop.rows)>0) data <- data[-drop.rows,]#
+	id.data <- data[,"id"]#
+	id.list <- sort(unique(id.data))#
+	census.data <- data[,"census"]#
+	census.list <- sort(unique(census.data))#
+	state.data <- data[,"state"]#
+	ghost.rows.to.drop <- integer(0)#
+	for(j in 2:length(census.list)){#
+		this.census.names <- id.data[census.data == census.list[j]]#
+		this.census.states <- state.data[census.data == census.list[j]]#
+		this.census.outfluxers <- this.census.names[this.census.states==11 | this.census.states==0]#
+		last.census.names <- id.data[census.data == census.list[j-1]]#
+		ghosts <- this.census.outfluxers[!this.census.outfluxers %in% last.census.names]#
+		if(length(ghosts)>0){#
+			ghost.rows.to.drop <- c(ghost.rows.to.drop, which(id.data %in% ghosts & census.data == census.list[j]))#
+		}#
+	}#
+	if(length(ghost.rows.to.drop) > 0) data <- data[-ghost.rows.to.drop,]#
+	id.data <- data[,"id"]#
+	id.list <- sort(unique(id.data))#
+	census.data <- data[,"census"]#
+	state.data <- data[,"state"]#
+	new.state.data <- state.data#
+	new.state.data[state.data==1] <- 0#
+	mentioned.matrix <- table(id.data, census.data)#
+	census.list <- as.numeric(colnames(mentioned.matrix))#
+	first.mention.list <- apply(mentioned.matrix, 1, function(z) min(as.numeric(names(z[z==1]))))#
+	if(!is.na(grouping)){#
+		grouping.data <- data[,grouping]#
+		for(j in 2:length(census.list)){#
+			this.census.names <- id.data[census.data == census.list[j]]#
+			last.census.names <- id.data[census.data == census.list[j-1]]#
+			this.census.groups <- grouping.data[census.data == census.list[j]]#
+			last.census.groups.data <- grouping.data[census.data == census.list[j-1]]#
+			last.census.groups <- last.census.groups.data[match(this.census.names, last.census.names)]#
+#
+			insert.state.vec <- rep(0, length(this.census.names))#
+			insert.state.vec[which(last.census.groups != this.census.groups)] <- 1#
+			new.state.data[census.data==census.list[j]] <- insert.state.vec#
+#
+			if(j %% 10 == 0) print(j)#
+		}#
+	}#
+	for(j in 1:length(census.list)){#
+		new.arrivals <- id.list[first.mention.list == census.list[j]]#
+		data.subset <- data[census.data==census.list[j],]#
+		immigrated.vec <- data.subset[match(new.arrivals, data.subset[,"id"]),"mom"] == 0#
+		insert.vec <- immigrated.vec#
+		insert.vec[immigrated.vec==1] <- 4#
+		insert.vec[immigrated.vec==0] <- 5#
+		men.and.women.last.census <- data[census.data==census.list[j-1], "id"]#
+		recorded.moms.of.newborns <- data.subset[match(new.arrivals, data.subset[,"id"]), "mom"]#
+		recorded.dads.of.newborns <- data.subset[match(new.arrivals, data.subset[,"id"]), "dad"]#
+		recorded.moms.of.newborns[which(!(recorded.moms.of.newborns %in% men.and.women.last.census))]#
+		new.arrivals[which(!(recorded.moms.of.newborns %in% men.and.women.last.census))]#
+		recorded.dads.of.newborns[which(!(recorded.dads.of.newborns %in% men.and.women.last.census))]#
+		new.arrivals[which(!(recorded.dads.of.newborns %in% men.and.women.last.census))]#
+		if(any(!(recorded.moms.of.newborns %in% men.and.women.last.census))){#
+			insert.vec[which(!(recorded.moms.of.newborns %in% men.and.women.last.census))] <- 4#
+		}#
+#
+		if(any(!(recorded.dads.of.newborns %in% men.and.women.last.census))){#
+			insert.vec[which(!(recorded.dads.of.newborns %in% men.and.women.last.census))] <- 4#
+		}#
+		new.state.subvec <- new.state.data[census.data==census.list[j]]#
+		new.state.subvec[match(new.arrivals, id.data[census.data==census.list[j]])] <- insert.vec#
+		new.state.data[census.data==census.list[j]] <- new.state.subvec #
+		if(j %% 10 == 0) print(j)#
+	}#
+#
+	# in case their first census was also their last census, we need to have this done after the birth/immigrant coding#
+	new.state.data[state.data==0] <- 3#
+	new.state.data[state.data==11] <- 2 #
+#
+	# New state codes:#
+	# 0 - remaining, no group transfer#
+	# 1 - remaining, transfered...only works if grouping is not NA#
+	# 2 - emigrated #
+	# 3 - died #
+	# 4 - immigrated - easy enough...first time they show up find out if they were born or not#
+	# 5 - born #
+#
+	m.delta.data <- rep(0, length(id.data))#
+	f.delta.data <- m.delta.data#
+	phenotype.data <- data[,as.character(phenotype)]#
+	n.kids.data <- rep(0, length(census.data))#
+#
+	# i should probably re-code the "new state data" so that i'm not relying on the state codes from the simulation...this could prove problematic in the long run...#
+#
+	# 3. i.change also to be calculated for second census and so forth#
+#
+	i.change.data <- rep(NA, length(id.data))#
+#
+	for(j in 2:length(census.list)){#
+		census.remaining.rows <- census.data==census.list[j] & (new.state.data==0 | new.state.data == 1)#
+		census.remainers <- id.data[census.remaining.rows]#
+		remainers.current.phenotype <- phenotype.data[ id.data %in% census.remainers & census.data == census.list[j] ] #
+		remainers.old.phenotype <- phenotype.data[ id.data %in% census.remainers & census.data == census.list[j-1] ] #
+		individual.change <- remainers.current.phenotype - remainers.old.phenotype#
+		i.change.data[id.data %in% census.remainers & census.data == census.list[j]] <- individual.change#
+		if(j %% 10 == 0) print(j)#
+	}#
+#
+	# he he #
+	# barplot(tapply(i.change.data, c(census.data), function(z) sum(z, na.rm=T)))#
+#
+	# 2. m.delta and f.delta have to be calculated for each child's census of birth, but NA all other times.  #
+	# 4. n.kids calculated as # of kids born to that person THAT time census, not cumulative#
+#
+	for(j in 1:(length(census.list)-1)){#
+		next.census.birth.rows <- census.data==census.list[j+1] & new.state.data==5#
+		next.census.births <- id.data[next.census.birth.rows]#
+		next.census.moms.data <- data[next.census.birth.rows,"mom"]#
+		next.census.dads.data <- data[next.census.birth.rows,"dad"]#
+		next.census.moms <- sort(unique(data[next.census.birth.rows,"mom"]))#
+		next.census.dads <- sort(unique(data[next.census.birth.rows,"dad"]))#
+		mom.n.kids <- sapply(next.census.moms, function(z) sum(next.census.moms.data==z))#
+		dad.n.kids <- sapply(next.census.dads, function(z) sum(next.census.dads.data==z))#
+		n.kids.data[census.data==census.list[j] & id.data %in% next.census.moms] <- mom.n.kids#
+		n.kids.data[census.data==census.list[j] & id.data %in% next.census.dads] <- dad.n.kids	#
+		kid.phenotypes <- phenotype.data[next.census.birth.rows]#
+		mom.phenotypes <- phenotype.data[census.data==census.list[j] & id.data %in% next.census.moms]#
+		names(mom.phenotypes) <- next.census.moms#
+		dad.phenotypes <- phenotype.data[census.data==census.list[j] & id.data %in% next.census.dads]#
+		names(dad.phenotypes) <- next.census.dads#
+		m.deltas <- kid.phenotypes - mom.phenotypes[as.character(next.census.moms.data)]#
+		f.deltas <- kid.phenotypes - dad.phenotypes[as.character(next.census.dads.data)]#
+		m.delta.data[next.census.birth.rows] <- m.deltas#
+		f.delta.data[next.census.birth.rows] <- f.deltas#
+		if(j %% 10 == 0) print(j)#
+	}#
+	if(is.na(grouping)){#
+		prepped.data <- cbind(census.data, id.data, new.state.data, data[,"mom"], m.delta.data, data[,"dad"], f.delta.data, i.change.data, n.kids.data, phenotype.data)#
+		colnames(prepped.data) <- c("census", "id", "state", "mid", "m.delta", "fid", "f.delta", "i.change", "n.kids", "phi")#
+	} else {#
+		prepped.data <- cbind(census.data, id.data, new.state.data, data[,"mom"], m.delta.data, data[,"dad"], f.delta.data, i.change.data, n.kids.data, phenotype.data, grouping.data)#
+		colnames(prepped.data) <- c("census", "id", "state", "mid", "m.delta", "fid", "f.delta", "i.change", "n.kids", "phi", "group.id")	#
+	}#
+	# FIgured out the bug I need to fix: for each time census, identify those who are now dead or emigrated, and make sure the phenotype, group, etc. for them is actually the #
+	# data from the previous time census; strictly speaking we do not know the values recorded at the time of death, and they cannot appear in the calculations!#
+	final.id.data <- unlist(prepped.data[,"id"])#
+	final.state.data <- unlist(prepped.data[,"state"])#
+	final.phi.data <- unlist(prepped.data[,"phi"])#
+	if(!is.na(grouping)) final.group.data <- unlist(prepped.data[,"group.id"])#
+	outflux.ids <- final.id.data[final.state.data==3 | final.state.data==2]#
+	for(i in 1:length(outflux.ids)){#
+		this.person.rows <- which(final.id.data==outflux.ids[i])#
+		if(final.phi.data[this.person.rows[length(this.person.rows)]] != final.phi.data[this.person.rows[length(this.person.rows)-1]]) print(paste(outflux.ids[i], " was fixed.", sep=""))#
+		prepped.data[this.person.rows[length(this.person.rows)], "phi"] <- final.phi.data[this.person.rows[length(this.person.rows)-1]]#
+		if(!is.na(grouping)){#
+			prepped.data[this.person.rows[length(this.person.rows)], "group.id"] <- final.group.data[this.person.rows[length(this.person.rows)-1]]#
+		}#
+	}#
+	prepped.data#
+}#
+# workhorse functions#
+#
+daily.immigration <- function(crude.immigration.rate.f, data){#
+	daily.immigration.rate.per.1000 <- (crude.immigration.rate.f/1000)/365#
+	pop.size <- length(active.rows)#
+	mean.daily.n.immigrants <- daily.immigration.rate.per.1000*pop.size #
+	todays.n.immigrants <- rpois(1, mean.daily.n.immigrants)		#
+	unoccupied.rows <- sum(is.na(data[,1]))#
+	return(todays.n.immigrants)#
+}#
+#
+daily.emigration <- function(crude.emigration.rate.f, data){#
+	daily.emigration.rate.per.1000 <- (crude.emigration.rate.f/1000)/365#
+	pop.size <- length(active.rows)#
+	mean.daily.n.emigrants <- daily.emigration.rate.per.1000*pop.size#
+	todays.n.emigrants <- rpois(1, mean.daily.n.emigrants)#
+	return(todays.n.emigrants)		#
+}#
+#
+emigrant.picker <- function(todays.n.emigrants.f, data){#
+	baseline.prob.emig <- 1/length(active.rows)#
+	t1s <- pop.reg[active.rows, "snoob"]#
+	alpha <- log(baseline.prob.emig/(1- baseline.prob.emig))#
+	emig.prob.vec <- exp(alpha + emigration.bias.snoob*t1s)/(1+exp(alpha + emigration.bias.snoob*t1s))#
+	emig.prob.vec <- emig.prob.vec/sum(emig.prob.vec)#
+	emigrants <- sample(active.rows, todays.n.emigrants.f, prob=emig.prob.vec)#
+	return(emigrants)#
+}#
+#
+conception <- function(asf, data){#
+	age.cats <- data[fecund.women.rows, "age.cat"]#
+	snoob <- data[fecund.women.rows,"snoob"]#
+	baseline <- (asf[as.character(age.cats)]/1000)/365#
+	alpha = log(baseline/(1- baseline))#
+	daily.pr.conception <- (1-(1/(1+exp(alpha + fertility.bias.snoob*snoob))))#
+	got.pregnant <- rbinom(length(fecund.women.rows), 1, daily.pr.conception)#
+	return(got.pregnant)#
+#
+}#
+#
+grim.reaper <- function(asm, data){#
+#
+	male <- data[active.rows,"male"]#
+	snoob <- data[active.rows,"snoob"]#
+	age.cats <- data[active.rows, "age.cat"]#
+	baseline <- (asm[as.character(age.cats)]/1000)/365#
+	alpha = log(baseline/(1- baseline))#
+#
+	daily.pr.death <- (1-(1/(1+exp(alpha + mortality.bias.male*male + mortality.bias.snoob*snoob))))#
+	died <- rbinom(length(active.rows), 1, daily.pr.death)#
+	return(died)#
+}#
+#
+age.binner <- function(age.vec){#
+#
+	zeros <- which(age.vec < 365)#
+	hundreds <- which(age.vec >= 36500)#
+#
+	age.years <- floor(age.vec/365)#
+	age.cats <- age.years - age.years %% 5#
+	age.cats[age.cats==0] <- 1#
+	age.cats[zeros] <- 0#
+	age.cats[hundreds] <- 100#
+#
+	return(age.cats)#
+#
+}#
+immigrant.maker <- function(data){ #
+	state <- 1#
+	mom <- 0#
+	dad <- 0#
+	age <- sample(1:(365*50),1)#
+	age.cat <- age.binner(age)#
+	last.im <- age#
+	last.em <- NA#
+	died <- NA#
+	male <- rbinom(1,1,prob=0.5)#
+	mate <- NA#
+	counter <- NA#
+	h.gene <- sample( 80:120 , 1)#
+	height <- height.fun(age=age, h.gene=h.gene) #
+	baseline.immigration <- mean(data[active.rows, "snoob"])#
+	alpha <- log(baseline.immigration/(1-baseline.immigration))#
+	snoob <- rbinom(1, 1,prob=(exp(alpha + immigration.bias.snoob)/(1+exp(alpha + immigration.bias.snoob))))#
+	language <- rbinom(1, 1, mean(data[active.rows, "language"]))#
+	aiy <- age/365#
+	a <- 0.18#
+	if(snoob==1) a <- a*snoob.less.risky.factor#
+	b <- 0.07#
+	risk <- a*aiy/exp(b*aiy)#
+	normal.traits <- c(snoob, language, risk)#
+	trait.vec <- c(h.gene, height, normal.traits)#
+	immigrant <- c(state, mom, dad, age, age.cat, last.im, last.em, died, male, mate, counter, trait.vec)#
+	immigrant#
+}#
+risk.setter <- function(data){#
+	aiy <- pop.reg[active.rows,"age"]/365#
+	snoob <- pop.reg[active.rows,"snoob"]#
+	a <- 0.18#
+	b <- 0.07#
+	a.vec <- rep(a, length(active.rows))#
+	a.vec[snoob==1] <- snoob.less.risky.factor*a#
+	risk <- a.vec*aiy/exp(b*aiy)#
+	return(risk)#
+}#
+#
+# I should set the risk scoring to be (a) stochastic and (b) peaking at the same time as RS, which is around 25 yrs old.  #
+#
+# a <- 0.18#
+# b <- 0.07#
+# curve(100*a*x/exp(b*x), from=0, to=90, add=T)#
+# abline(v=1/b, lty=2, col="gray")#
+#
+baby.maker <- function(mom.id, dad.id, data){#
+	state <- 1#
+	age <- 0#
+	age.cat <- 0#
+	last.im <- NA#
+	last.em <- NA#
+	died <- NA#
+	male <- rbinom(1,1,prob=0.5)#
+	mate <- NA#
+	counter <- NA#
+	# snoob inheritance#
+	mom.snoob <- data[mom.id, "snoob"]#
+	dad.snoob <- data[dad.id, "snoob"]#
+	midparent.snoob <- mean(c(mom.snoob, dad.snoob))  # GOD DAMN that was a hard bug to solve...#
+	if(midparent.snoob == 1) midparent.snoob <- 0.9999#
+	if(midparent.snoob == 0) midparent.snoob <- 0.0001#
+	baseline.trans.bias <- midparent.snoob#
+	alpha <- log(baseline.trans.bias/(1-baseline.trans.bias))#
+	prob.kid.is.snoob <- exp(alpha + transmission.bias.snoob)/(1+ exp(alpha + transmission.bias.snoob))#
+	snoob <- rbinom(1,1,prob=prob.kid.is.snoob)#
+	# english inheritance#
+	mom.english <- data[mom.id, "language"]#
+	dad.english <- data[dad.id, "language"]#
+	parent.frq.english <- mean(c(mom.english, dad.english))#
+	parent.alpha <- 0.99#
+	pop.frq.english <- mean(pop.reg[active.rows,"language"])#
+	pr.acquire.english <- parent.alpha*parent.frq.english + (1-parent.alpha)*pop.frq.english#
+	language <- rbinom(1, 1, pr.acquire.english)#
+	risk <- 0#
+	normal.traits <- c(snoob, language, risk)#
+	h.gene <- sample( c(data[mom.id, "h.gene"], data[mom.id, "h.gene"]) , 1)#
+	height <- height.fun(age=age, h.gene=h.gene) #
+	trait.vec <- c(h.gene, height, normal.traits)#
+	newborn <- c(state, mom.id, dad.id, age, age.cat, last.im, last.em, died, male, mate, counter, trait.vec)#
+	newborn#
+}#
+mate.finder <- function(mom.id, data){  # this seems the most inefficient of the simulator's code...it has to run mom by mom, which is quite a lot of them...#
+	current.mate <- NA#
+	moms.snoob <- data[mom.id, "snoob"]#
+	last.mate <- data[mom.id, "mate"]#
+	if(!is.na(last.mate)){#
+		if(data[last.mate, "state"] == 1 & data[last.mate, "age"] > 15*365 & data[last.mate, "age"] < 60*365){#
+			current.mate <- last.mate#
+		}#
+	}#
+	# if the last mate exists, is alive and within the age range, he's your man#
+	if(is.na(current.mate)){	#
+		# "available" means within age range, alive, male#
+		# male.mating.bias <- 1#
+		available.men <- active.rows[which( data[active.rows, "male"]==1 & data[active.rows, "age"] >= reproductive.min.age*365 & data[active.rows, "age"] < 60*365 )]#
+		if(length(available.men)>0){#
+			current.mate <- available.men[1]#
+			if(length(available.men) > 1){#
+				available.men.traits <- data[available.men,"snoob"]#
+				n.men <- length(available.men)#
+				prob.choose.snoob <- mate.similarity.bias.snoob*moms.snoob + (1-moms.snoob)*(1-mate.similarity.bias.snoob)#
+				prob.choose.nonsnoob <- 1 - prob.choose.snoob#
+				prob.is.chosen <- rep(0.5, n.men)#
+				prob.is.chosen[available.men.traits==1] <- prob.choose.snoob#
+				prob.is.chosen[available.men.traits==0] <- prob.choose.nonsnoob#
+				current.mate <- sample(available.men, 1, prob=prob.is.chosen)#
+			}#
+		} else {#
+			current.mate <- NA#
+		}#
+	}#
+	current.mate	#
+#
+}#
+# height function: #
+#
+height.fun <- function(age, h.gene){#
+	if(any(age>100)) age <- age/365#
+	heights <- h.gene*exp(-3 + .2*age)/(1 + exp(-3+.2*age))#
+	heights#
+}
+risk.setter
+# Basic Simulator Values#
+census.census.length <- 365*5 # number of days until we do another census#
+diagnostic = FALSE#
+days.max = 365*300 # stop after this time#
+running.pop.graphs = TRUE#
+event.logging = FALSE#
+reproductive.min.age <- 14 # in years#
+ini.snoob.frq <- 0.2#
+ini.pop.size <- 1000#
+#
+# Vital Population Rates#
+age.specific.fertility <- c(40.47, 102.50, 115.92, 96.10, 46.36, 9.12, 0.58) # expected births per person within five-year age classes from 15 to 50#
+disable.births <- FALSE # for diagnostic purposes#
+age.specific.mortality <- c(6.54, 0.29, 0.14, 0.18, 0.64, 0.91, 0.90, 1.06, 1.53, 2.31, 3.41, 4.93, 7.42, 11.50, 17.80, 27.71, 43.50, 69.58, 110.56, 174.77, 276.56, 438.92) # expected deaths per person within five-year age classes from 0 to 100+#
+disable.deaths <- FALSE  # for diagnostic purposes#
+crude.immigration.rate <- 0 # expected number of immigrants per 1000 people per year 	#
+crude.emigration.rate <-  0 # expected number of emigrants per 1000 people per year#
+individual.change.rate <- 0.00006  # fraction of individuals who update each day#
+social.sample.size <- 100  # number of individuals sampled when updating#
+mortality.bias.male <- 0.3 # logistic coefficient: positive values mean men die more often#
+#
+# Mechanisms of Evoluton#
+mate.similarity.bias.snoob <- 0.9 # from 0 to 1; if 0.5, no assortment by snoob status.  If 1, perfect assortment along snoob status.  If 0, perfect reverse assortment along snoob status.#
+fertility.bias.snoob <- 0.8 # logistic coefficient; positive values mean snoobs have higher RS than nonsnoobs, all else being equal#
+immigration.bias.snoob <- 0.0  # logistic coefficient; positive values mean immigrants are more likely to be snoobs than would be expected for the current frequency of snoobs in the population.  When zero, immigrants contribute trait at same rate as current frq of snoobs.#
+emigration.bias.snoob <- 0.0  # logistic coefficient: positive values mean snoobs emigrate more often.  #
+mortality.bias.snoob <- 0.0 # logistic coefficient: positive values mean snoobs die more often.#
+transmission.bias.snoob <- 0.0   # logistic coefficient: if 0, kid will take snoob=1 with probability equal to midparent value.  If >0, kid will be more likely to take snoob=1 than would be expected from the midparent value.  If <0, kid will be LESS likely to take snoob=1 than would be expected from midparent values....to see real effects, this term has to be LARGE - magnitude 10 or so.#
+conformity.bias.snoob <- 1.3 # exponential coefficient: unbiased transmission if equals 1....values > 1 mean biased copying towards majority's trait, values < 1 mean biased copying against majority's trait#
+snoob.less.risky.factor <- 0.9 # varies between 0 and 1; 1 indicates snoobs are just as risky as non-snoobs, while 0 indicates they aren't risky at all#
+#
+# Diagnostic on parameters; if there's a problem, parameters will not be okay.  #
+parameters.okay <- TRUE#
+if(mate.similarity.bias.snoob > 1 | mate.similarity.bias.snoob < 0) parameters.okay <- FALSE#
+parameters.okay#
+####### Simulator Initialization ########
+#
+# SnoobSim State Codes:#
+# 0 - Dead #
+# 1 - Active #
+# 2 - Emigrant#
+#
+reg.max <- ini.pop.size*2  # this isn't really important anymore...the matrix will grow#
+#
+day <- 1#
+x.axis.day <- 1#
+#
+standard.traits <- c("state", "mom", "dad", "age", "age.cat", "last.im", "last.em", "died", "male",  "mate", "counter")#
+special.traits <- c("h.gene", "height", "snoob", "language", "risk")#
+#
+census.n.opening <- ini.pop.size#
+census.n.births <- 0#
+census.n.deaths <- 0#
+census.n.immigrants <- 0#
+census.n.emigrants <- 0#
+census.n.closing <- 0#
+#
+census.table <- c(census.n.opening, census.n.births, census.n.deaths, census.n.immigrants, census.n.emigrants, census.n.closing)#
+names(census.table) <- c("n.start", "births", "deaths", "inflow", "outflow", "n.close")#
+#
+state <- c(rep(1, ini.pop.size), rep(NA, reg.max-ini.pop.size))#
+mom <- c(rep(0, ini.pop.size), rep(NA, reg.max-ini.pop.size))#
+#
+pop.reg <- matrix(NA,ncol=length(c(standard.traits, special.traits)), nrow=reg.max)#
+pop.reg <- as.data.frame(pop.reg)#
+colnames(pop.reg) <- c(standard.traits, special.traits)#
+#
+pop.reg[1:ini.pop.size, "state"] <- 1#
+pop.reg[1:ini.pop.size, "mom"] <- 0#
+pop.reg[1:ini.pop.size, "dad"] <- 0#
+ages <- 0:99#
+counts <- c(57, 74, 68, 77, 65, 75, 79, 83, 66, 60, 80, 72, 59, 87, 78, 73, 58, 73, 84, 67, 83, 76, 71, 74, 72, 62, 91, 64, 63, 76, 80, 79, 71, 73, 76, 72, 70, 82, 80, 70, 82, 72, 78, 75, 75, 83, 73, 70, 79, 71, 77, 81, 80, 71, 64, 70, 62, 65, 73, 76, 70, 73, 84, 74 ,64 ,63 ,76 ,72 ,55 ,81 ,78 ,74 ,68 ,69 ,71 ,63 ,56, 50, 55, 12, 41, 38, 56, 30, 27, 22, 38, 30,  8, 22, 11 ,12, 12, 10,  4,  9,  8,  3,  2,  4)#
+#
+pop.reg[1:ini.pop.size, "age"] <- 365*sample(ages, ini.pop.size, replace=T, prob=counts)+replicate(ini.pop.size, sample(0:364,1))#
+# pop.reg[1:ini.pop.size, "age"] <- 365*sample(1:60, ini.pop.size, replace=T, prob=dexp(1:60, rate=.05))#
+pop.reg[1:ini.pop.size, "age.cat"] <- age.binner(pop.reg[1:ini.pop.size, "age"])#
+pop.reg[1:ini.pop.size, "last.im"] <- pop.reg[1:ini.pop.size, "age"]#
+pop.reg[1:ini.pop.size, "male"] <- rep(c(1,0), ini.pop.size/2)#
+#
+# trait initialization#
+pop.reg[1:ini.pop.size, "h.gene"] <- sample( 80:120 , ini.pop.size, replace=T)#
+pop.reg[1:ini.pop.size, "height"] <- height.fun(pop.reg[1:ini.pop.size, "age"], pop.reg[1:ini.pop.size, "h.gene"])#
+pop.reg[1:ini.pop.size, "snoob"] <- rbinom(ini.pop.size, 1, p=ini.snoob.frq)#
+pop.reg[1:ini.pop.size, "language"] <- pop.reg[1:ini.pop.size, "snoob"]#
+# uncorrelate.switch <- sample(1:ini.pop.size, 0.15*ini.pop.size) # If I did this right, snoobs and language should correlate very nicely#
+# pop.reg[uncorrelate.switch, "language"] <- 1-pop.reg[uncorrelate.switch, "language"]#
+pop.reg[1:ini.pop.size, "risk"] <- rep(0, ini.pop.size)#
+#
+na.reg <- matrix(NA,ncol=length(c(standard.traits, special.traits)), nrow=reg.max*.3)#
+#
+census.death.list <- integer(0)#
+census.emigration.list <- integer(0)#
+#
+event.log <- character(0)#
+#
+avg.kiddy <- integer(0)#
+#
+n <- ini.pop.size#
+n.snoob <- sum(pop.reg[1:ini.pop.size, "snoob"])#
+n.eng <- sum(pop.reg[1:ini.pop.size, "language"])#
+# plot(day, n, pch=20, ylim=c(0, reg.max), xlim=c(0, days.max))#
+#
+if(disable.births == T) age.specific.fertility <- rep(0, 7)#
+if(disable.deaths == T) age.specific.mortality <- rep(0, 22)#
+active.rows <- which(pop.reg[,"state"]==1)#
+pop.reg[active.rows, "risk"] <- risk.setter(pop.reg)#
+#
+census.end.census <- cbind(rep(0, length(active.rows)), active.rows, pop.reg[active.rows,])#
+colnames(census.end.census)[1] <- "census"#
+colnames(census.end.census)[2] <- "id"#
+#
+names(age.specific.fertility) <- c(15, 20, 25, 30, 35, 40, 45)#
+names(age.specific.mortality) <- c(0, 1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100)#
+#
+should.simulate.day <- day < days.max & sum(is.na(pop.reg[,1])) != 0#
+diagnostics <- F#
+#
+if(diagnostics==T){#
+daily.age.counts <- table(floor(pop.reg[active.rows, "age"]/365))#
+M.at.risk <- rep(0, 130)#
+names(M.at.risk) <- 0:129#
+M.events <- rep(0, 130)#
+names(M.events) <- 0:129#
+#
+snoob.daily.age.counts <- daily.age.counts#
+M.snoob.at.risk <- rep(0, 130)#
+names(M.snoob.at.risk) <- 0:129#
+M.snoob.events <- rep(0, 130)#
+names(M.snoob.events) <- 0:129#
+#
+nonsnoob.daily.age.counts <- daily.age.counts#
+M.nonsnoob.at.risk <- rep(0, 130)#
+names(M.nonsnoob.at.risk) <- 0:129#
+M.nonsnoob.events <- rep(0, 130)#
+names(M.nonsnoob.events) <- 0:129#
+#
+snooblish.daily.age.counts <- daily.age.counts#
+M.snooblish.at.risk <- rep(0, 130)#
+names(M.snooblish.at.risk) <- 0:129#
+M.snooblish.events <- rep(0, 130)#
+names(M.snooblish.events) <- 0:129#
+#
+nonsnooblish.daily.age.counts <- daily.age.counts#
+M.nonsnooblish.at.risk <- rep(0, 130)#
+names(M.nonsnooblish.at.risk) <- 0:129#
+M.nonsnooblish.events <- rep(0, 130)#
+names(M.nonsnooblish.events) <- 0:129#
+#
+nonsnoob.snooblish.daily.age.counts <- daily.age.counts#
+M.nonsnoob.snooblish.at.risk <- rep(0, 130)#
+names(M.nonsnoob.snooblish.at.risk) <- 0:129#
+M.nonsnoob.snooblish.events <- rep(0, 130)#
+names(M.nonsnoob.snooblish.events) <- 0:129#
+#
+nonsnoob.nonsnooblish.daily.age.counts <- daily.age.counts#
+M.nonsnoob.nonsnooblish.at.risk <- rep(0, 130)#
+names(M.nonsnoob.nonsnooblish.at.risk) <- 0:129#
+M.nonsnoob.nonsnooblish.events <- rep(0, 130)#
+names(M.nonsnoob.nonsnooblish.events) <- 0:129#
+#
+snoob.snooblish.daily.age.counts <- daily.age.counts#
+M.snoob.snooblish.at.risk <- rep(0, 130)#
+names(M.snoob.snooblish.at.risk) <- 0:129#
+M.snoob.snooblish.events <- rep(0, 130)#
+names(M.snoob.snooblish.events) <- 0:129#
+#
+snoob.nonsnooblish.daily.age.counts <- daily.age.counts#
+M.snoob.nonsnooblish.at.risk <- rep(0, 130)#
+names(M.snoob.nonsnooblish.at.risk) <- 0:129#
+M.snoob.nonsnooblish.events <- rep(0, 130)#
+names(M.snoob.nonsnooblish.events) <- 0:129#
+#
+}#
+####### Simulator Daily Loop ########
+#
+while( should.simulate.day ){#
+	if(day %% census.census.length == 1) census.n.opening <- sum(pop.reg[,"state"]==1, na.rm=T)#
+#
+	active.rows <- which(pop.reg[,"state"]==1)#
+	# set risk and age category for the day#
+	pop.reg[active.rows, "risk"] <- risk.setter(pop.reg)#
+	pop.reg[active.rows, "age.cat"] <- age.binner(pop.reg[active.rows, "age"])#
+	# immigration#
+	n.immigrants <- daily.immigration(crude.immigration.rate, pop.reg)#
+	census.n.immigrants <- census.n.immigrants + n.immigrants#
+	if(n.immigrants > 0){#
+		for(i in 1:n.immigrants){#
+			im.surname <- min(which(is.na(pop.reg[,1])))#
+			pop.reg[im.surname, ] <- immigrant.maker(data=pop.reg)#
+			if(is.na(pop.reg[im.surname, "snoob"])) stop("WTF?")#
+			if(event.logging==T){#
+				event.log <- c(event.log, paste("Day ", day, ": ", ifelse(pop.reg[im.surname, "male"]==1, "Male ", "Female "), im.surname, " has entered the population.", sep=""))#
+			}#
+		}#
+	}#
+	active.rows <- which(pop.reg[,"state"]==1)#
+	# births#
+	giving.birth <- active.rows[!is.na(pop.reg[active.rows,"counter"]) & pop.reg[active.rows,"counter"]==0]#
+	if(length(giving.birth)>0){#
+		for(i in 1:length(giving.birth)){#
+			mom <- giving.birth[i]#
+			dad <- pop.reg[giving.birth[i], "mate"]#
+			baby.surname <- min(which(is.na(pop.reg[,1])))#
+			pop.reg[baby.surname, ] <- baby.maker(mom, dad, pop.reg)#
+			if(event.logging==T){#
+				event.log <- c(event.log, paste("Day ", day, ": ", ifelse(pop.reg[baby.surname, "male"]==1, "Male ", "Female "), baby.surname, " has been born to female ", pop.reg[baby.surname, "mom"] , " and male ", pop.reg[baby.surname, "dad"], ".", sep=""))#
+			}#
+			census.n.births <- census.n.births + 1	#
+			pop.reg[mom, "counter"] <- NA#
+		}#
+	}#
+	if(diagnostics==T){#
+		# at risk is any woman in the age range#
+		# event is any woman who just gave birth#
+	}#
+	active.rows <- which(pop.reg[,"state"]==1)#
+	# mating#
+	male <- pop.reg[active.rows, "male"]#
+	not.pregnant <- is.na(pop.reg[active.rows, "counter"])#
+	active.age.cats <- pop.reg[active.rows, "age.cat"]#
+	fecund.women.rows <- active.rows[which(male == 0 & not.pregnant & active.age.cats >= 15 & active.age.cats < 50)]#
+	will.conceive <- conception(age.specific.fertility, pop.reg)#
+	female.maters <- fecund.women.rows[as.logical(will.conceive)]#
+	female.maters#
+#
+	# diagnostics: make sure only women are in fecund.women.rows#
+	if(length(female.maters) > 0){#
+		for(i in 1:length(female.maters)){#
+			mom <- female.maters[i]#
+			dad <- mate.finder(mom, data=pop.reg)#
+			pop.reg[mom,"mate"] <- dad#
+			if(is.na(dad)){#
+				event.log <- c(event.log, paste("Day ", day, ": ", "Female ", mom, " tried to conceive but was unable to find a mate.", sep=""))#
+			}#
+			if(!is.na(dad)){#
+				pop.reg[dad,"mate"] <- mom#
+				pop.reg[mom, "counter"] <- round(rnorm(1,280,5))#
+				if(event.logging==T){#
+					event.log <- c(event.log, paste("Day ", day, ": ", "Female ", mom, " has become pregnant from male ", dad, ".", sep=""))#
+				}#
+			}		#
+		}#
+	}#
+	# mortality#
+	who.died <- grim.reaper(age.specific.mortality, data=pop.reg)#
+	census.n.deaths <- census.n.deaths + sum(who.died)	#
+	who.died <- as.logical(who.died)#
+	if(any(who.died)){#
+		census.death.list <- c(census.death.list, active.rows[who.died])#
+		pop.reg[active.rows[who.died], "state"] <- 0#
+		pop.reg[active.rows[who.died],"died"] <- pop.reg[active.rows[who.died], "age"]  # record their age at death#
+		if(event.logging==T){#
+			death.list <- active.rows[who.died]#
+			for(i in 1:length(death.list)){#
+				event.log <- c(event.log, paste("Day ", day, ": ", ifelse(pop.reg[death.list[i], "male"]==1, "Male ", "Female "), death.list[i], " has died.", sep=""))#
+			}#
+		}#
+	}#
+	if(diagnostics==T){#
+		daily.age.counts <- table(floor(pop.reg[active.rows, "age"]/365))#
+	 	M.at.risk[names(daily.age.counts)] <- M.at.risk[names(daily.age.counts)]+daily.age.counts#
+		if(any(who.died)){#
+			daily.event.age <- table(floor(pop.reg[active.rows[who.died], "age"]/365))#
+			M.events[names(daily.event.age)] <-  M.events[names(daily.event.age)]+daily.event.age#
+		}#
+		is.snoob <- as.logical(pop.reg[active.rows,"snoob"])#
+		snoob.daily.age.counts <- table(floor(pop.reg[active.rows[is.snoob], "age"]/365))#
+		M.snoob.at.risk[names(snoob.daily.age.counts)] <- M.snoob.at.risk[names(snoob.daily.age.counts)]+snoob.daily.age.counts#
+		if(any(is.snoob & who.died)){#
+			snoob.daily.event.age <- table(floor(pop.reg[active.rows[which(is.snoob & who.died)], "age"]/365))#
+			M.snoob.events[names(snoob.daily.event.age)] <- M.snoob.events[names(snoob.daily.event.age)]+snoob.daily.event.age#
+		}#
+		nonsnoob.daily.age.counts <- table(floor(pop.reg[active.rows[!is.snoob], "age"]/365))#
+		M.nonsnoob.at.risk[names(nonsnoob.daily.age.counts)] <- M.nonsnoob.at.risk[names(nonsnoob.daily.age.counts)]+nonsnoob.daily.age.counts#
+		if(any(!is.snoob & who.died)){#
+			nonsnoob.daily.event.age <- table(floor(pop.reg[active.rows[which(!is.snoob & who.died)], "age"]/365))#
+			M.nonsnoob.events[names(nonsnoob.daily.event.age)] <- M.nonsnoob.events[names(nonsnoob.daily.event.age)]+nonsnoob.daily.event.age#
+		}#
+		is.snooblish <- as.logical(pop.reg[active.rows,"language"])#
+		snooblish.daily.age.counts <- table(floor(pop.reg[active.rows[is.snooblish], "age"]/365))#
+		M.snooblish.at.risk[names(snooblish.daily.age.counts)] <- M.snooblish.at.risk[names(snooblish.daily.age.counts)]+snooblish.daily.age.counts#
+		if(any(is.snooblish & who.died)){#
+			snooblish.daily.event.age <- table(floor(pop.reg[active.rows[which(is.snooblish & who.died)], "age"]/365))#
+			M.snooblish.events[names(snooblish.daily.event.age)] <- M.snooblish.events[names(snooblish.daily.event.age)]+snooblish.daily.event.age#
+		}#
+		nonsnooblish.daily.age.counts <- table(floor(pop.reg[active.rows[!is.snooblish], "age"]/365))#
+		M.nonsnooblish.at.risk[names(nonsnooblish.daily.age.counts)] <- M.nonsnooblish.at.risk[names(nonsnooblish.daily.age.counts)]+nonsnooblish.daily.age.counts#
+		if(any(!is.snooblish & who.died)){#
+			nonsnooblish.daily.event.age <- table(floor(pop.reg[active.rows[which(!is.snooblish & who.died)], "age"]/365))#
+			M.nonsnooblish.events[names(nonsnooblish.daily.event.age)] <- M.nonsnooblish.events[names(nonsnooblish.daily.event.age)]+nonsnooblish.daily.event.age#
+		}#
+		snoob.snooblish.daily.age.counts <- table(floor(pop.reg[active.rows[is.snooblish & is.snoob], "age"]/365))#
+		M.snoob.snooblish.at.risk[names(snoob.snooblish.daily.age.counts)] <- M.snoob.snooblish.at.risk[names(snoob.snooblish.daily.age.counts)] + snoob.snooblish.daily.age.counts#
+		if(any(is.snooblish & is.snoob & who.died)){#
+			snoob.snooblish.daily.event.age <- table(floor(pop.reg[active.rows[which(is.snooblish & is.snoob & who.died)], "age"]/365))#
+			M.snoob.snooblish.events[names(snoob.snooblish.daily.event.age)] <- M.snoob.snooblish.events[names(snoob.snooblish.daily.event.age)]+snoob.snooblish.daily.event.age#
+		}#
+		snoob.nonsnooblish.daily.age.counts <- table(floor(pop.reg[active.rows[!is.snooblish & is.snoob], "age"]/365))#
+		M.snoob.nonsnooblish.at.risk[names(snoob.nonsnooblish.daily.age.counts)] <- M.snoob.nonsnooblish.at.risk[names(snoob.nonsnooblish.daily.age.counts)] + snoob.nonsnooblish.daily.age.counts#
+		if(any(!is.snooblish & is.snoob & who.died)){#
+			snoob.nonsnooblish.daily.event.age <- table(floor(pop.reg[active.rows[which(!is.snooblish & is.snoob & who.died)], "age"]/365))#
+			M.snoob.nonsnooblish.events[names(snoob.nonsnooblish.daily.event.age)] <- M.snoob.nonsnooblish.events[names(snoob.nonsnooblish.daily.event.age)]+snoob.nonsnooblish.daily.event.age#
+		}#
+		nonsnoob.nonsnooblish.daily.age.counts <- table(floor(pop.reg[active.rows[!is.snooblish & !is.snoob], "age"]/365))#
+		M.nonsnoob.nonsnooblish.at.risk[names(nonsnoob.nonsnooblish.daily.age.counts)] <- M.nonsnoob.nonsnooblish.at.risk[names(nonsnoob.nonsnooblish.daily.age.counts)] + nonsnoob.nonsnooblish.daily.age.counts#
+		if(any(!is.snooblish & !is.snoob & who.died)){#
+			nonsnoob.nonsnooblish.daily.event.age <- table(floor(pop.reg[active.rows[which(!is.snooblish & !is.snoob & who.died)], "age"]/365))#
+			M.nonsnoob.nonsnooblish.events[names(nonsnoob.nonsnooblish.daily.event.age)] <- M.nonsnoob.nonsnooblish.events[names(nonsnoob.nonsnooblish.daily.event.age)]+nonsnoob.nonsnooblish.daily.event.age#
+		}#
+		nonsnoob.snooblish.daily.age.counts <- table(floor(pop.reg[active.rows[is.snooblish & !is.snoob], "age"]/365))#
+		M.nonsnoob.snooblish.at.risk[names(nonsnoob.snooblish.daily.age.counts)] <- M.nonsnoob.snooblish.at.risk[names(nonsnoob.snooblish.daily.age.counts)] + nonsnoob.snooblish.daily.age.counts#
+		if(any(is.snooblish & !is.snoob & who.died)){#
+			nonsnoob.snooblish.daily.event.age <- table(floor(pop.reg[active.rows[which(is.snooblish & !is.snoob & who.died)], "age"]/365))#
+			M.nonsnoob.snooblish.events[names(nonsnoob.snooblish.daily.event.age)] <- M.nonsnoob.snooblish.events[names(nonsnoob.snooblish.daily.event.age)]+nonsnoob.snooblish.daily.event.age#
+		}#
+	}#
+	active.rows <- which(pop.reg[,"state"]==1)#
+	# emigration#
+	todays.n.emigrants <- daily.emigration(crude.emigration.rate, pop.data)#
+	names.who.left <- emigrant.picker(todays.n.emigrants, data=pop.reg)#
+	who.left <- rep(0, length(active.rows))#
+	names(who.left) <- active.rows#
+	who.left[as.character(names.who.left)] <- 1#
+	census.n.emigrants <- census.n.emigrants + sum(who.left)#
+	who.left <- as.logical(who.left)#
+	if(any(who.left)){#
+		census.emigration.list <- c(census.emigration.list, active.rows[who.left])#
+		pop.reg[active.rows[who.left], "state"] <- 2#
+		pop.reg[active.rows[who.left],"last.em"] <- pop.reg[active.rows[who.left], "age"]  # record their age at emigration#
+		if(event.logging==T){#
+			left.list <- active.rows[who.left]#
+			for(i in 1:length(left.list)){#
+				event.log <- c(event.log, paste("Day ", day, ": ", ifelse(pop.reg[left.list[i], "male"]==1, "Male ", "Female "), left.list[i], " has left the population.", sep=""))#
+			}#
+		}#
+	}#
+	active.rows <- which(pop.reg[,"state"]==1)#
+	# individual change#
+	n.individual.changers <- rbinom(1, length(active.rows), individual.change.rate)#
+	if(n.individual.changers>0){#
+		who.changes <- sample(active.rows, n.individual.changers)#
+		active.row.t1s <- pop.reg[active.rows,"snoob"]#
+		for(i in 1:n.individual.changers){#
+			model.sample.t1s <- sample(active.row.t1s, social.sample.size, replace=T)#
+			sample.frq <- mean(model.sample.t1s)#
+			prob.converting.to.snoob <- (sample.frq^conformity.bias.snoob)/(sample.frq^conformity.bias.snoob + (1-sample.frq)^conformity.bias.snoob)#
+			pop.reg[who.changes[i],"snoob"] <- sample(c(1,0), 1, prob=c(prob.converting.to.snoob, 1-prob.converting.to.snoob))#
+		}#
+	}#
+	# bookkeeping to close out the day#
+	if(diagnostic==T){#
+		readline("-- hit enter --")   # for diagnostics#
+		print(pop.reg[1:(min(which(is.na(pop.reg[,1])))-1),])  # for diagnostics#
+	}#
+#
+	# everyone is a day older, including those who died?#
+	pop.reg[,"age"] <- as.numeric(pop.reg[,"age"]) + 1 #
+	# pregnant women are one day closer to birth#
+	pregnant <- active.rows[!is.na(pop.reg[active.rows,"counter"])]#
+	if(length(pregnant)>0){#
+		pop.reg[pregnant, "counter"] <- pop.reg[pregnant, "counter"] - 1#
+	}#
+	census.n.closing <- sum(pop.reg[,"state"]==1, na.rm=T)#
+	# record the census, if it is time#
+	if(day %% census.census.length == 0){#
+		census.rows <- c(active.rows, census.death.list, census.emigration.list)#
+		temp <- cbind(rep(day/census.census.length, length(census.rows)), census.rows, pop.reg[census.rows,])#
+		colnames(temp)[1] <- "census"#
+		colnames(temp)[2] <- "id"#
+		census.end.census <- rbind(census.end.census, temp)#
+#
+		census.table <- as.matrix(rbind(census.table, c(census.n.opening, census.n.births, census.n.deaths, census.n.immigrants, census.n.emigrants, census.n.closing)))#
+		rownames(census.table) <- 1:dim(census.table)[1]#
+		census.n.opening <- 0#
+		census.n.closing <- 0#
+		census.n.births <- 0#
+		census.n.deaths <- 0#
+		census.n.immigrants <- 0#
+		census.n.emigrants <- 0#
+		census.death.list <- integer(0)#
+		census.emigration.list <- integer(0)#
+	}#
+	# check to see if the population register is running out of space, and increase accordingly#
+	if(day %% 30 == 0){#
+		if(sum(is.na(pop.reg[,"state"])) < 1000){#
+			last.entry <- dim(pop.reg)[1]#
+			pop.reg[(last.entry+1):(last.entry+1000),] <- rep(NA, dim(pop.reg)[2]*1000)#
+		}#
+	}#
+	# visualizing population growth#
+	if(day %% 30==0 & running.pop.graphs==T){#
+		x.axis.day <- c(x.axis.day, day)#
+		n <- c(n, length(active.rows))#
+		n.snoob <- c(n.snoob, sum(pop.reg[active.rows,"snoob"]))#
+		n.eng <- c(n.eng, sum(pop.reg[active.rows, "language"]))#
+		par(mfrow=c(1,2))#
+		plot(x.axis.day, n, pch=20, xaxt="n", type="l", xlab="Years", ylim=c(0, max(n)))#
+		points(x.axis.day, n.snoob, pch=20, xaxt="n", type="l", xlab="Years", col="blue")#
+		points(x.axis.day, n.eng, pch=20, xaxt="n", type="l", xlab="Years", col="orange")#
+		abline(v=c(0, census.census.length*(1:floor(day/census.census.length))), lty=2, col="lightblue")#
+		stop.day <- max(x.axis.day) + (365-max(x.axis.day) %% 365)	#
+	#	quarterly.tks <- seq(0, stop.day, by=91.25)#
+	#	axis(1, at=quarterly.tks, labels=F)#
+		yearly.tks <- seq(0, stop.day, by=365)#
+		axis(1, at=yearly.tks, labels=0:(stop.day/365), lwd.ticks=1.5)#
+		age.pyramid(floor(pop.reg[active.rows,"age"]/365), pop.reg[active.rows, "male"], by=5)#
+	}#
+	day <- day + 1#
+	print(day)#
+	should.simulate.day <- day < days.max & sum(is.na(pop.reg[,1])) != 0#
+	if(n.snoob[length(n.snoob)]/n[length(n)] > 0.99) should.simulate.day <- F#
+} # end day loop#
+#
+####### Export Census Data ########
+#
+my.data <- census.end.census
+# Basic Simulator Values#
+census.census.length <- 365*5 # number of days until we do another census#
+diagnostic = FALSE#
+days.max = 365*300 # stop after this time#
+running.pop.graphs = FALSE#
+event.logging = FALSE#
+reproductive.min.age <- 14 # in years#
+ini.snoob.frq <- 0.2#
+ini.pop.size <- 1000#
+#
+# Vital Population Rates#
+age.specific.fertility <- c(40.47, 102.50, 115.92, 96.10, 46.36, 9.12, 0.58) # expected births per person within five-year age classes from 15 to 50#
+disable.births <- FALSE # for diagnostic purposes#
+age.specific.mortality <- c(6.54, 0.29, 0.14, 0.18, 0.64, 0.91, 0.90, 1.06, 1.53, 2.31, 3.41, 4.93, 7.42, 11.50, 17.80, 27.71, 43.50, 69.58, 110.56, 174.77, 276.56, 438.92) # expected deaths per person within five-year age classes from 0 to 100+#
+disable.deaths <- FALSE  # for diagnostic purposes#
+crude.immigration.rate <- 0 # expected number of immigrants per 1000 people per year 	#
+crude.emigration.rate <-  0 # expected number of emigrants per 1000 people per year#
+individual.change.rate <- 0.00006  # fraction of individuals who update each day#
+social.sample.size <- 100  # number of individuals sampled when updating#
+mortality.bias.male <- 0.3 # logistic coefficient: positive values mean men die more often#
+#
+# Mechanisms of Evoluton#
+mate.similarity.bias.snoob <- 0.9 # from 0 to 1; if 0.5, no assortment by snoob status.  If 1, perfect assortment along snoob status.  If 0, perfect reverse assortment along snoob status.#
+fertility.bias.snoob <- 0.8 # logistic coefficient; positive values mean snoobs have higher RS than nonsnoobs, all else being equal#
+immigration.bias.snoob <- 0.0  # logistic coefficient; positive values mean immigrants are more likely to be snoobs than would be expected for the current frequency of snoobs in the population.  When zero, immigrants contribute trait at same rate as current frq of snoobs.#
+emigration.bias.snoob <- 0.0  # logistic coefficient: positive values mean snoobs emigrate more often.  #
+mortality.bias.snoob <- 0.0 # logistic coefficient: positive values mean snoobs die more often.#
+transmission.bias.snoob <- 0.0   # logistic coefficient: if 0, kid will take snoob=1 with probability equal to midparent value.  If >0, kid will be more likely to take snoob=1 than would be expected from the midparent value.  If <0, kid will be LESS likely to take snoob=1 than would be expected from midparent values....to see real effects, this term has to be LARGE - magnitude 10 or so.#
+conformity.bias.snoob <- 1.3 # exponential coefficient: unbiased transmission if equals 1....values > 1 mean biased copying towards majority's trait, values < 1 mean biased copying against majority's trait#
+snoob.less.risky.factor <- 0.9 # varies between 0 and 1; 1 indicates snoobs are just as risky as non-snoobs, while 0 indicates they aren't risky at all#
+#
+# Diagnostic on parameters; if there's a problem, parameters will not be okay.  #
+parameters.okay <- TRUE#
+if(mate.similarity.bias.snoob > 1 | mate.similarity.bias.snoob < 0) parameters.okay <- FALSE#
+parameters.okay#
+####### Simulator Initialization ########
+#
+# SnoobSim State Codes:#
+# 0 - Dead #
+# 1 - Active #
+# 2 - Emigrant#
+#
+reg.max <- ini.pop.size*2  # this isn't really important anymore...the matrix will grow#
+#
+day <- 1#
+x.axis.day <- 1#
+#
+standard.traits <- c("state", "mom", "dad", "age", "age.cat", "last.im", "last.em", "died", "male",  "mate", "counter")#
+special.traits <- c("h.gene", "height", "snoob", "language", "risk")#
+#
+census.n.opening <- ini.pop.size#
+census.n.births <- 0#
+census.n.deaths <- 0#
+census.n.immigrants <- 0#
+census.n.emigrants <- 0#
+census.n.closing <- 0#
+#
+census.table <- c(census.n.opening, census.n.births, census.n.deaths, census.n.immigrants, census.n.emigrants, census.n.closing)#
+names(census.table) <- c("n.start", "births", "deaths", "inflow", "outflow", "n.close")#
+#
+state <- c(rep(1, ini.pop.size), rep(NA, reg.max-ini.pop.size))#
+mom <- c(rep(0, ini.pop.size), rep(NA, reg.max-ini.pop.size))#
+#
+pop.reg <- matrix(NA,ncol=length(c(standard.traits, special.traits)), nrow=reg.max)#
+pop.reg <- as.data.frame(pop.reg)#
+colnames(pop.reg) <- c(standard.traits, special.traits)#
+#
+pop.reg[1:ini.pop.size, "state"] <- 1#
+pop.reg[1:ini.pop.size, "mom"] <- 0#
+pop.reg[1:ini.pop.size, "dad"] <- 0#
+ages <- 0:99#
+counts <- c(57, 74, 68, 77, 65, 75, 79, 83, 66, 60, 80, 72, 59, 87, 78, 73, 58, 73, 84, 67, 83, 76, 71, 74, 72, 62, 91, 64, 63, 76, 80, 79, 71, 73, 76, 72, 70, 82, 80, 70, 82, 72, 78, 75, 75, 83, 73, 70, 79, 71, 77, 81, 80, 71, 64, 70, 62, 65, 73, 76, 70, 73, 84, 74 ,64 ,63 ,76 ,72 ,55 ,81 ,78 ,74 ,68 ,69 ,71 ,63 ,56, 50, 55, 12, 41, 38, 56, 30, 27, 22, 38, 30,  8, 22, 11 ,12, 12, 10,  4,  9,  8,  3,  2,  4)#
+#
+pop.reg[1:ini.pop.size, "age"] <- 365*sample(ages, ini.pop.size, replace=T, prob=counts)+replicate(ini.pop.size, sample(0:364,1))#
+# pop.reg[1:ini.pop.size, "age"] <- 365*sample(1:60, ini.pop.size, replace=T, prob=dexp(1:60, rate=.05))#
+pop.reg[1:ini.pop.size, "age.cat"] <- age.binner(pop.reg[1:ini.pop.size, "age"])#
+pop.reg[1:ini.pop.size, "last.im"] <- pop.reg[1:ini.pop.size, "age"]#
+pop.reg[1:ini.pop.size, "male"] <- rep(c(1,0), ini.pop.size/2)#
+#
+# trait initialization#
+pop.reg[1:ini.pop.size, "h.gene"] <- sample( 80:120 , ini.pop.size, replace=T)#
+pop.reg[1:ini.pop.size, "height"] <- height.fun(pop.reg[1:ini.pop.size, "age"], pop.reg[1:ini.pop.size, "h.gene"])#
+pop.reg[1:ini.pop.size, "snoob"] <- rbinom(ini.pop.size, 1, p=ini.snoob.frq)#
+pop.reg[1:ini.pop.size, "language"] <- pop.reg[1:ini.pop.size, "snoob"]#
+# uncorrelate.switch <- sample(1:ini.pop.size, 0.15*ini.pop.size) # If I did this right, snoobs and language should correlate very nicely#
+# pop.reg[uncorrelate.switch, "language"] <- 1-pop.reg[uncorrelate.switch, "language"]#
+pop.reg[1:ini.pop.size, "risk"] <- rep(0, ini.pop.size)#
+#
+na.reg <- matrix(NA,ncol=length(c(standard.traits, special.traits)), nrow=reg.max*.3)#
+#
+census.death.list <- integer(0)#
+census.emigration.list <- integer(0)#
+#
+event.log <- character(0)#
+#
+avg.kiddy <- integer(0)#
+#
+n <- ini.pop.size#
+n.snoob <- sum(pop.reg[1:ini.pop.size, "snoob"])#
+n.eng <- sum(pop.reg[1:ini.pop.size, "language"])#
+# plot(day, n, pch=20, ylim=c(0, reg.max), xlim=c(0, days.max))#
+#
+if(disable.births == T) age.specific.fertility <- rep(0, 7)#
+if(disable.deaths == T) age.specific.mortality <- rep(0, 22)#
+active.rows <- which(pop.reg[,"state"]==1)#
+pop.reg[active.rows, "risk"] <- risk.setter(pop.reg)#
+#
+census.end.census <- cbind(rep(0, length(active.rows)), active.rows, pop.reg[active.rows,])#
+colnames(census.end.census)[1] <- "census"#
+colnames(census.end.census)[2] <- "id"#
+#
+names(age.specific.fertility) <- c(15, 20, 25, 30, 35, 40, 45)#
+names(age.specific.mortality) <- c(0, 1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100)#
+#
+should.simulate.day <- day < days.max & sum(is.na(pop.reg[,1])) != 0#
+diagnostics <- F#
+#
+if(diagnostics==T){#
+daily.age.counts <- table(floor(pop.reg[active.rows, "age"]/365))#
+M.at.risk <- rep(0, 130)#
+names(M.at.risk) <- 0:129#
+M.events <- rep(0, 130)#
+names(M.events) <- 0:129#
+#
+snoob.daily.age.counts <- daily.age.counts#
+M.snoob.at.risk <- rep(0, 130)#
+names(M.snoob.at.risk) <- 0:129#
+M.snoob.events <- rep(0, 130)#
+names(M.snoob.events) <- 0:129#
+#
+nonsnoob.daily.age.counts <- daily.age.counts#
+M.nonsnoob.at.risk <- rep(0, 130)#
+names(M.nonsnoob.at.risk) <- 0:129#
+M.nonsnoob.events <- rep(0, 130)#
+names(M.nonsnoob.events) <- 0:129#
+#
+snooblish.daily.age.counts <- daily.age.counts#
+M.snooblish.at.risk <- rep(0, 130)#
+names(M.snooblish.at.risk) <- 0:129#
+M.snooblish.events <- rep(0, 130)#
+names(M.snooblish.events) <- 0:129#
+#
+nonsnooblish.daily.age.counts <- daily.age.counts#
+M.nonsnooblish.at.risk <- rep(0, 130)#
+names(M.nonsnooblish.at.risk) <- 0:129#
+M.nonsnooblish.events <- rep(0, 130)#
+names(M.nonsnooblish.events) <- 0:129#
+#
+nonsnoob.snooblish.daily.age.counts <- daily.age.counts#
+M.nonsnoob.snooblish.at.risk <- rep(0, 130)#
+names(M.nonsnoob.snooblish.at.risk) <- 0:129#
+M.nonsnoob.snooblish.events <- rep(0, 130)#
+names(M.nonsnoob.snooblish.events) <- 0:129#
+#
+nonsnoob.nonsnooblish.daily.age.counts <- daily.age.counts#
+M.nonsnoob.nonsnooblish.at.risk <- rep(0, 130)#
+names(M.nonsnoob.nonsnooblish.at.risk) <- 0:129#
+M.nonsnoob.nonsnooblish.events <- rep(0, 130)#
+names(M.nonsnoob.nonsnooblish.events) <- 0:129#
+#
+snoob.snooblish.daily.age.counts <- daily.age.counts#
+M.snoob.snooblish.at.risk <- rep(0, 130)#
+names(M.snoob.snooblish.at.risk) <- 0:129#
+M.snoob.snooblish.events <- rep(0, 130)#
+names(M.snoob.snooblish.events) <- 0:129#
+#
+snoob.nonsnooblish.daily.age.counts <- daily.age.counts#
+M.snoob.nonsnooblish.at.risk <- rep(0, 130)#
+names(M.snoob.nonsnooblish.at.risk) <- 0:129#
+M.snoob.nonsnooblish.events <- rep(0, 130)#
+names(M.snoob.nonsnooblish.events) <- 0:129#
+#
+}#
+####### Simulator Daily Loop ########
+#
+while( should.simulate.day ){#
+	if(day %% census.census.length == 1) census.n.opening <- sum(pop.reg[,"state"]==1, na.rm=T)#
+#
+	active.rows <- which(pop.reg[,"state"]==1)#
+	# set risk and age category for the day#
+	pop.reg[active.rows, "risk"] <- risk.setter(pop.reg)#
+	pop.reg[active.rows, "age.cat"] <- age.binner(pop.reg[active.rows, "age"])#
+	# immigration#
+	n.immigrants <- daily.immigration(crude.immigration.rate, pop.reg)#
+	census.n.immigrants <- census.n.immigrants + n.immigrants#
+	if(n.immigrants > 0){#
+		for(i in 1:n.immigrants){#
+			im.surname <- min(which(is.na(pop.reg[,1])))#
+			pop.reg[im.surname, ] <- immigrant.maker(data=pop.reg)#
+			if(is.na(pop.reg[im.surname, "snoob"])) stop("WTF?")#
+			if(event.logging==T){#
+				event.log <- c(event.log, paste("Day ", day, ": ", ifelse(pop.reg[im.surname, "male"]==1, "Male ", "Female "), im.surname, " has entered the population.", sep=""))#
+			}#
+		}#
+	}#
+	active.rows <- which(pop.reg[,"state"]==1)#
+	# births#
+	giving.birth <- active.rows[!is.na(pop.reg[active.rows,"counter"]) & pop.reg[active.rows,"counter"]==0]#
+	if(length(giving.birth)>0){#
+		for(i in 1:length(giving.birth)){#
+			mom <- giving.birth[i]#
+			dad <- pop.reg[giving.birth[i], "mate"]#
+			baby.surname <- min(which(is.na(pop.reg[,1])))#
+			pop.reg[baby.surname, ] <- baby.maker(mom, dad, pop.reg)#
+			if(event.logging==T){#
+				event.log <- c(event.log, paste("Day ", day, ": ", ifelse(pop.reg[baby.surname, "male"]==1, "Male ", "Female "), baby.surname, " has been born to female ", pop.reg[baby.surname, "mom"] , " and male ", pop.reg[baby.surname, "dad"], ".", sep=""))#
+			}#
+			census.n.births <- census.n.births + 1	#
+			pop.reg[mom, "counter"] <- NA#
+		}#
+	}#
+	if(diagnostics==T){#
+		# at risk is any woman in the age range#
+		# event is any woman who just gave birth#
+	}#
+	active.rows <- which(pop.reg[,"state"]==1)#
+	# mating#
+	male <- pop.reg[active.rows, "male"]#
+	not.pregnant <- is.na(pop.reg[active.rows, "counter"])#
+	active.age.cats <- pop.reg[active.rows, "age.cat"]#
+	fecund.women.rows <- active.rows[which(male == 0 & not.pregnant & active.age.cats >= 15 & active.age.cats < 50)]#
+	will.conceive <- conception(age.specific.fertility, pop.reg)#
+	female.maters <- fecund.women.rows[as.logical(will.conceive)]#
+	female.maters#
+#
+	# diagnostics: make sure only women are in fecund.women.rows#
+	if(length(female.maters) > 0){#
+		for(i in 1:length(female.maters)){#
+			mom <- female.maters[i]#
+			dad <- mate.finder(mom, data=pop.reg)#
+			pop.reg[mom,"mate"] <- dad#
+			if(is.na(dad)){#
+				event.log <- c(event.log, paste("Day ", day, ": ", "Female ", mom, " tried to conceive but was unable to find a mate.", sep=""))#
+			}#
+			if(!is.na(dad)){#
+				pop.reg[dad,"mate"] <- mom#
+				pop.reg[mom, "counter"] <- round(rnorm(1,280,5))#
+				if(event.logging==T){#
+					event.log <- c(event.log, paste("Day ", day, ": ", "Female ", mom, " has become pregnant from male ", dad, ".", sep=""))#
+				}#
+			}		#
+		}#
+	}#
+	# mortality#
+	who.died <- grim.reaper(age.specific.mortality, data=pop.reg)#
+	census.n.deaths <- census.n.deaths + sum(who.died)	#
+	who.died <- as.logical(who.died)#
+	if(any(who.died)){#
+		census.death.list <- c(census.death.list, active.rows[who.died])#
+		pop.reg[active.rows[who.died], "state"] <- 0#
+		pop.reg[active.rows[who.died],"died"] <- pop.reg[active.rows[who.died], "age"]  # record their age at death#
+		if(event.logging==T){#
+			death.list <- active.rows[who.died]#
+			for(i in 1:length(death.list)){#
+				event.log <- c(event.log, paste("Day ", day, ": ", ifelse(pop.reg[death.list[i], "male"]==1, "Male ", "Female "), death.list[i], " has died.", sep=""))#
+			}#
+		}#
+	}#
+	if(diagnostics==T){#
+		daily.age.counts <- table(floor(pop.reg[active.rows, "age"]/365))#
+	 	M.at.risk[names(daily.age.counts)] <- M.at.risk[names(daily.age.counts)]+daily.age.counts#
+		if(any(who.died)){#
+			daily.event.age <- table(floor(pop.reg[active.rows[who.died], "age"]/365))#
+			M.events[names(daily.event.age)] <-  M.events[names(daily.event.age)]+daily.event.age#
+		}#
+		is.snoob <- as.logical(pop.reg[active.rows,"snoob"])#
+		snoob.daily.age.counts <- table(floor(pop.reg[active.rows[is.snoob], "age"]/365))#
+		M.snoob.at.risk[names(snoob.daily.age.counts)] <- M.snoob.at.risk[names(snoob.daily.age.counts)]+snoob.daily.age.counts#
+		if(any(is.snoob & who.died)){#
+			snoob.daily.event.age <- table(floor(pop.reg[active.rows[which(is.snoob & who.died)], "age"]/365))#
+			M.snoob.events[names(snoob.daily.event.age)] <- M.snoob.events[names(snoob.daily.event.age)]+snoob.daily.event.age#
+		}#
+		nonsnoob.daily.age.counts <- table(floor(pop.reg[active.rows[!is.snoob], "age"]/365))#
+		M.nonsnoob.at.risk[names(nonsnoob.daily.age.counts)] <- M.nonsnoob.at.risk[names(nonsnoob.daily.age.counts)]+nonsnoob.daily.age.counts#
+		if(any(!is.snoob & who.died)){#
+			nonsnoob.daily.event.age <- table(floor(pop.reg[active.rows[which(!is.snoob & who.died)], "age"]/365))#
+			M.nonsnoob.events[names(nonsnoob.daily.event.age)] <- M.nonsnoob.events[names(nonsnoob.daily.event.age)]+nonsnoob.daily.event.age#
+		}#
+		is.snooblish <- as.logical(pop.reg[active.rows,"language"])#
+		snooblish.daily.age.counts <- table(floor(pop.reg[active.rows[is.snooblish], "age"]/365))#
+		M.snooblish.at.risk[names(snooblish.daily.age.counts)] <- M.snooblish.at.risk[names(snooblish.daily.age.counts)]+snooblish.daily.age.counts#
+		if(any(is.snooblish & who.died)){#
+			snooblish.daily.event.age <- table(floor(pop.reg[active.rows[which(is.snooblish & who.died)], "age"]/365))#
+			M.snooblish.events[names(snooblish.daily.event.age)] <- M.snooblish.events[names(snooblish.daily.event.age)]+snooblish.daily.event.age#
+		}#
+		nonsnooblish.daily.age.counts <- table(floor(pop.reg[active.rows[!is.snooblish], "age"]/365))#
+		M.nonsnooblish.at.risk[names(nonsnooblish.daily.age.counts)] <- M.nonsnooblish.at.risk[names(nonsnooblish.daily.age.counts)]+nonsnooblish.daily.age.counts#
+		if(any(!is.snooblish & who.died)){#
+			nonsnooblish.daily.event.age <- table(floor(pop.reg[active.rows[which(!is.snooblish & who.died)], "age"]/365))#
+			M.nonsnooblish.events[names(nonsnooblish.daily.event.age)] <- M.nonsnooblish.events[names(nonsnooblish.daily.event.age)]+nonsnooblish.daily.event.age#
+		}#
+		snoob.snooblish.daily.age.counts <- table(floor(pop.reg[active.rows[is.snooblish & is.snoob], "age"]/365))#
+		M.snoob.snooblish.at.risk[names(snoob.snooblish.daily.age.counts)] <- M.snoob.snooblish.at.risk[names(snoob.snooblish.daily.age.counts)] + snoob.snooblish.daily.age.counts#
+		if(any(is.snooblish & is.snoob & who.died)){#
+			snoob.snooblish.daily.event.age <- table(floor(pop.reg[active.rows[which(is.snooblish & is.snoob & who.died)], "age"]/365))#
+			M.snoob.snooblish.events[names(snoob.snooblish.daily.event.age)] <- M.snoob.snooblish.events[names(snoob.snooblish.daily.event.age)]+snoob.snooblish.daily.event.age#
+		}#
+		snoob.nonsnooblish.daily.age.counts <- table(floor(pop.reg[active.rows[!is.snooblish & is.snoob], "age"]/365))#
+		M.snoob.nonsnooblish.at.risk[names(snoob.nonsnooblish.daily.age.counts)] <- M.snoob.nonsnooblish.at.risk[names(snoob.nonsnooblish.daily.age.counts)] + snoob.nonsnooblish.daily.age.counts#
+		if(any(!is.snooblish & is.snoob & who.died)){#
+			snoob.nonsnooblish.daily.event.age <- table(floor(pop.reg[active.rows[which(!is.snooblish & is.snoob & who.died)], "age"]/365))#
+			M.snoob.nonsnooblish.events[names(snoob.nonsnooblish.daily.event.age)] <- M.snoob.nonsnooblish.events[names(snoob.nonsnooblish.daily.event.age)]+snoob.nonsnooblish.daily.event.age#
+		}#
+		nonsnoob.nonsnooblish.daily.age.counts <- table(floor(pop.reg[active.rows[!is.snooblish & !is.snoob], "age"]/365))#
+		M.nonsnoob.nonsnooblish.at.risk[names(nonsnoob.nonsnooblish.daily.age.counts)] <- M.nonsnoob.nonsnooblish.at.risk[names(nonsnoob.nonsnooblish.daily.age.counts)] + nonsnoob.nonsnooblish.daily.age.counts#
+		if(any(!is.snooblish & !is.snoob & who.died)){#
+			nonsnoob.nonsnooblish.daily.event.age <- table(floor(pop.reg[active.rows[which(!is.snooblish & !is.snoob & who.died)], "age"]/365))#
+			M.nonsnoob.nonsnooblish.events[names(nonsnoob.nonsnooblish.daily.event.age)] <- M.nonsnoob.nonsnooblish.events[names(nonsnoob.nonsnooblish.daily.event.age)]+nonsnoob.nonsnooblish.daily.event.age#
+		}#
+		nonsnoob.snooblish.daily.age.counts <- table(floor(pop.reg[active.rows[is.snooblish & !is.snoob], "age"]/365))#
+		M.nonsnoob.snooblish.at.risk[names(nonsnoob.snooblish.daily.age.counts)] <- M.nonsnoob.snooblish.at.risk[names(nonsnoob.snooblish.daily.age.counts)] + nonsnoob.snooblish.daily.age.counts#
+		if(any(is.snooblish & !is.snoob & who.died)){#
+			nonsnoob.snooblish.daily.event.age <- table(floor(pop.reg[active.rows[which(is.snooblish & !is.snoob & who.died)], "age"]/365))#
+			M.nonsnoob.snooblish.events[names(nonsnoob.snooblish.daily.event.age)] <- M.nonsnoob.snooblish.events[names(nonsnoob.snooblish.daily.event.age)]+nonsnoob.snooblish.daily.event.age#
+		}#
+	}#
+	active.rows <- which(pop.reg[,"state"]==1)#
+	# emigration#
+	todays.n.emigrants <- daily.emigration(crude.emigration.rate, pop.data)#
+	names.who.left <- emigrant.picker(todays.n.emigrants, data=pop.reg)#
+	who.left <- rep(0, length(active.rows))#
+	names(who.left) <- active.rows#
+	who.left[as.character(names.who.left)] <- 1#
+	census.n.emigrants <- census.n.emigrants + sum(who.left)#
+	who.left <- as.logical(who.left)#
+	if(any(who.left)){#
+		census.emigration.list <- c(census.emigration.list, active.rows[who.left])#
+		pop.reg[active.rows[who.left], "state"] <- 2#
+		pop.reg[active.rows[who.left],"last.em"] <- pop.reg[active.rows[who.left], "age"]  # record their age at emigration#
+		if(event.logging==T){#
+			left.list <- active.rows[who.left]#
+			for(i in 1:length(left.list)){#
+				event.log <- c(event.log, paste("Day ", day, ": ", ifelse(pop.reg[left.list[i], "male"]==1, "Male ", "Female "), left.list[i], " has left the population.", sep=""))#
+			}#
+		}#
+	}#
+	active.rows <- which(pop.reg[,"state"]==1)#
+	# individual change#
+	n.individual.changers <- rbinom(1, length(active.rows), individual.change.rate)#
+	if(n.individual.changers>0){#
+		who.changes <- sample(active.rows, n.individual.changers)#
+		active.row.t1s <- pop.reg[active.rows,"snoob"]#
+		for(i in 1:n.individual.changers){#
+			model.sample.t1s <- sample(active.row.t1s, social.sample.size, replace=T)#
+			sample.frq <- mean(model.sample.t1s)#
+			prob.converting.to.snoob <- (sample.frq^conformity.bias.snoob)/(sample.frq^conformity.bias.snoob + (1-sample.frq)^conformity.bias.snoob)#
+			pop.reg[who.changes[i],"snoob"] <- sample(c(1,0), 1, prob=c(prob.converting.to.snoob, 1-prob.converting.to.snoob))#
+		}#
+	}#
+	# bookkeeping to close out the day#
+	if(diagnostic==T){#
+		readline("-- hit enter --")   # for diagnostics#
+		print(pop.reg[1:(min(which(is.na(pop.reg[,1])))-1),])  # for diagnostics#
+	}#
+#
+	# everyone is a day older, including those who died?#
+	pop.reg[,"age"] <- as.numeric(pop.reg[,"age"]) + 1 #
+	# pregnant women are one day closer to birth#
+	pregnant <- active.rows[!is.na(pop.reg[active.rows,"counter"])]#
+	if(length(pregnant)>0){#
+		pop.reg[pregnant, "counter"] <- pop.reg[pregnant, "counter"] - 1#
+	}#
+	census.n.closing <- sum(pop.reg[,"state"]==1, na.rm=T)#
+	# record the census, if it is time#
+	if(day %% census.census.length == 0){#
+		census.rows <- c(active.rows, census.death.list, census.emigration.list)#
+		temp <- cbind(rep(day/census.census.length, length(census.rows)), census.rows, pop.reg[census.rows,])#
+		colnames(temp)[1] <- "census"#
+		colnames(temp)[2] <- "id"#
+		census.end.census <- rbind(census.end.census, temp)#
+#
+		census.table <- as.matrix(rbind(census.table, c(census.n.opening, census.n.births, census.n.deaths, census.n.immigrants, census.n.emigrants, census.n.closing)))#
+		rownames(census.table) <- 1:dim(census.table)[1]#
+		census.n.opening <- 0#
+		census.n.closing <- 0#
+		census.n.births <- 0#
+		census.n.deaths <- 0#
+		census.n.immigrants <- 0#
+		census.n.emigrants <- 0#
+		census.death.list <- integer(0)#
+		census.emigration.list <- integer(0)#
+	}#
+	# check to see if the population register is running out of space, and increase accordingly#
+	if(day %% 30 == 0){#
+		if(sum(is.na(pop.reg[,"state"])) < 1000){#
+			last.entry <- dim(pop.reg)[1]#
+			pop.reg[(last.entry+1):(last.entry+1000),] <- rep(NA, dim(pop.reg)[2]*1000)#
+		}#
+	}#
+	# visualizing population growth#
+	if(day %% 30==0 & running.pop.graphs==T){#
+		x.axis.day <- c(x.axis.day, day)#
+		n <- c(n, length(active.rows))#
+		n.snoob <- c(n.snoob, sum(pop.reg[active.rows,"snoob"]))#
+		n.eng <- c(n.eng, sum(pop.reg[active.rows, "language"]))#
+		par(mfrow=c(1,2))#
+		plot(x.axis.day, n, pch=20, xaxt="n", type="l", xlab="Years", ylim=c(0, max(n)))#
+		points(x.axis.day, n.snoob, pch=20, xaxt="n", type="l", xlab="Years", col="blue")#
+		points(x.axis.day, n.eng, pch=20, xaxt="n", type="l", xlab="Years", col="orange")#
+		abline(v=c(0, census.census.length*(1:floor(day/census.census.length))), lty=2, col="lightblue")#
+		stop.day <- max(x.axis.day) + (365-max(x.axis.day) %% 365)	#
+	#	quarterly.tks <- seq(0, stop.day, by=91.25)#
+	#	axis(1, at=quarterly.tks, labels=F)#
+		yearly.tks <- seq(0, stop.day, by=365)#
+		axis(1, at=yearly.tks, labels=0:(stop.day/365), lwd.ticks=1.5)#
+		age.pyramid(floor(pop.reg[active.rows,"age"]/365), pop.reg[active.rows, "male"], by=5)#
+	}#
+	day <- day + 1#
+	print(day)#
+	should.simulate.day <- day < days.max & sum(is.na(pop.reg[,1])) != 0#
+	if(n.snoob[length(n.snoob)]/n[length(n)] > 0.99) should.simulate.day <- F#
+} # end day loop#
+#
+####### Export Census Data ########
+#
+my.data <- census.end.census#
+# write.csv(my.data, "2012-02-03 300 yr 1000 ppl.csv", row.names=FALSE)
+source("https://bioconductor.org/biocLite.R")#
+biocLite()
+devtools::install_github('rmcelreath/rethinking')
+library(rethinking)
+install.packages(c('coda','mvtnorm','loo'))#
+options(repos=c(getOption('repos'), rethinking='http://xcelab.net/R'))#
+install.packages('rethinking',type='source')
+suburb <- c('Medina', 'Kwinana', 'Hillman', 'Coolbellup', 'Warnbro', 'Rivervale', 'Willagee', 'Kallaroo', 'Madaley', 'Kingsley', 'Nedlands', 'Cottesloe', 'Dalkeith', 'City Beach', 'Peppermint Grove')
+sei <- c(1, 2, 3, 3, 4, 5, 5, 6, 7, 8, 9, 9, 10, 10, 10)#
+#
+postbox <- c(1, 1, 0, 1, 1, 3, 1, 3, 1, 3, 10, 8, 5, 5, 0)#
+#
+return.stamped <- c(3, 5, 7, 3, 4, 5, 5, 9, 7, 4, 8, 6, 10, 8, 8)#
+#
+return.unstamped <- c(4, 1, 3, 2, 1, 2, 3, 3, 2, 5, 3, 4, 3, 5, 4)
+d <- data.frame(suburb, sei, postbox, return.stamped, return.unstamped)
+d
+install.packages('lme4')
+getOption('repos')
+r <- getOption("repos")             # hard code the US repo for CRAN#
+r["CRAN"] <- "http://cran.us.r-project.org"#
+options(repos = r)#
+rm(r)
+getwd()
+ls
+ls()
+testy('yes')
+install.packages('bbmle')
+sei <- c(1, 2, 3, 3, 4, 5, 5, 6, 7, 8, 9, 9, 10, 10, 10)#
+#
+postbox <- c(1, 1, 0, 1, 1, 3, 1, 3, 1, 3, 10, 8, 5, 5, 0)#
+#
+return.stamped <- c(3, 5, 7, 3, 4, 5, 5, 9, 7, 4, 8, 6, 10, 8, 8)#
+#
+return.unstamped <- c(4, 1, 3, 2, 1, 2, 3, 3, 2, 5, 3, 4, 3, 5, 4)#
+#
+d <- data.frame(suburb, sei, postbox, return.stamped, return.unstamped)#
+#
+require(lme4)
+suburb <- c('Medina', 'Kwinana', 'Hillman', 'Coolbellup', 'Warnbro', 'Rivervale', 'Willagee', 'Kallaroo', 'Madaley', 'Kingsley', 'Nedlands', 'Cottesloe', 'Dalkeith', 'City Beach', 'Peppermint Grove')#
+#
+sei <- c(1, 2, 3, 3, 4, 5, 5, 6, 7, 8, 9, 9, 10, 10, 10)#
+#
+postbox <- c(1, 1, 0, 1, 1, 3, 1, 3, 1, 3, 10, 8, 5, 5, 0)#
+#
+return.stamped <- c(3, 5, 7, 3, 4, 5, 5, 9, 7, 4, 8, 6, 10, 8, 8)#
+#
+return.unstamped <- c(4, 1, 3, 2, 1, 2, 3, 3, 2, 5, 3, 4, 3, 5, 4)#
+#
+d <- data.frame(suburb, sei, postbox, return.stamped, return.unstamped)#
+#
+require(lme4)
+nei <- c('Medina', 'Kwinana', 'Hillman', 'Coolbellup', 'Warnbro', 'Rivervale', 'Willagee', 'Kallaroo', 'Madaley', 'Kingsley', 'Nedlands', 'Cottesloe', 'Dalkeith', 'City Beach', 'Peppermint Grove')#
+#
+nei.sei <- c(1, 2, 3, 3, 4, 5, 5, 6, 7, 8, 9, 9, 10, 10, 10)#
+#
+nei.postbox <- c(1, 1, 0, 1, 1, 3, 1, 3, 1, 3, 10, 8, 5, 5, 0)#
+#
+return.stamped <- c(3, 5, 7, 3, 4, 5, 5, 9, 7, 4, 8, 6, 10, 8, 8)#
+#
+return.unstamped <- c(4, 1, 3, 2, 1, 2, 3, 3, 2, 5, 3, 4, 3, 5, 4)#
+#
+d <- matrix(NA, nrow=300, ncol=5)#
+#
+colnames(d) <- c('returned', 'stamped', 'nei', 'nei.postbox', 'nei.sei')#
+#
+d<-as.data.frame(d)
+length(nei)
+nei <- rep(nei, each=10)
+nei
+nei <- rep(nei, each=10)#
+nei.sei <- rep(nei.sei, each=10)#
+nei.postbox <- rep(nei.postbox, each=10)
+5*15
+nei.postbox
+nei.sei
+rep(c(1,0), times=10)
+rep(c(1,0), times=10, each=10\)
+rep(c(1,0), times=10, each=10)
+rep(c(1,0), times=15, each=10)
+nei <- rep(('Medina', 'Kwinana', 'Hillman', 'Coolbellup', 'Warnbro', 'Rivervale', 'Willagee', 'Kallaroo', 'Madaley', 'Kingsley', 'Nedlands', 'Cottesloe', 'Dalkeith', 'City Beach', 'Peppermint Grove'), each=10, times=2)#
+nei.sei <- rep(c(1, 2, 3, 3, 4, 5, 5, 6, 7, 8, 9, 9, 10, 10, 10), each=10, times=2)#
+nei.postbox <- rep(c(1, 1, 0, 1, 1, 3, 1, 3, 1, 3, 10, 8, 5, 5, 0), each=10, times=2)#
+stamped <- rep(c(1,0), times=1, each=150)
+nei <- rep(c('Medina', 'Kwinana', 'Hillman', 'Coolbellup', 'Warnbro', 'Rivervale', 'Willagee', 'Kallaroo', 'Madaley', 'Kingsley', 'Nedlands', 'Cottesloe', 'Dalkeith', 'City Beach', 'Peppermint Grove'), each=10, times=2)#
+nei.sei <- rep(c(1, 2, 3, 3, 4, 5, 5, 6, 7, 8, 9, 9, 10, 10, 10), each=10, times=2)#
+nei.postbox <- rep(c(1, 1, 0, 1, 1, 3, 1, 3, 1, 3, 10, 8, 5, 5, 0), each=10, times=2)#
+stamped <- rep(c(1,0), times=1, each=150)
+stamped
+nei.sei
+nei.postbox
+rep(c(1,0), each=c(return.stamped[1], 10-return.stamped[1]))
+rep
+help(rep)
+rep(1, times=return.stamped[1])
+c(rep(1, times=return.stamped[1]), rep(0, times=10-return.stamped[1])
+)
+c(rep(1, times=return.stamped[1]), rep(0, times=10-return.stamped[1]))
+return.stamped <- c(3, 5, 7, 3, 4, 5, 5, 9, 7, 4, 8, 6, 10, 8, 8)#
+return.unstamped <- c(4, 1, 3, 2, 1, 2, 3, 3, 2, 5, 3, 4, 3, 5, 4)#
+#
+x <- c(return.stamped, return.unstamped)
+x
+i <- 1
+c(rep(1, times=x[i]), rep(0, times=10-x[i]))
+i <- 2
+c(rep(1, times=x[i]), rep(0, times=10-x[i]))
+i <- 5
+c(rep(1, times=x[i]), rep(0, times=10-x[i]))
+returned <- integer(0)
+return.stamped <- c(3, 5, 7, 3, 4, 5, 5, 9, 7, 4, 8, 6, 10, 8, 8)#
+return.unstamped <- c(4, 1, 3, 2, 1, 2, 3, 3, 2, 5, 3, 4, 3, 5, 4)#
+x <- c(return.stamped, return.unstamped)#
+returned <- integer(0)#
+for(i in 1:length(x)) returned <- c(returned, c(rep(1, times=x[i]), rep(0, times=10-x[i])))
+returned
+nei <- c('Medina', 'Kwinana', 'Hillman', 'Coolbellup', 'Warnbro', 'Rivervale', 'Willagee', 'Kallaroo', 'Madaley', 'Kingsley', 'Nedlands', 'Cottesloe', 'Dalkeith', 'City Beach', 'Peppermint Grove')#
+#
+nei.sei <- c(1, 2, 3, 3, 4, 5, 5, 6, 7, 8, 9, 9, 10, 10, 10)#
+#
+nei.postbox <- c(1, 1, 0, 1, 1, 3, 1, 3, 1, 3, 10, 8, 5, 5, 0)#
+#
+return.stamped <- c(3, 5, 7, 3, 4, 5, 5, 9, 7, 4, 8, 6, 10, 8, 8)#
+return.unstamped <- c(4, 1, 3, 2, 1, 2, 3, 3, 2, 5, 3, 4, 3, 5, 4)#
+#
+nei <- rep(c('Medina', 'Kwinana', 'Hillman', 'Coolbellup', 'Warnbro', 'Rivervale', 'Willagee', 'Kallaroo', 'Madaley', 'Kingsley', 'Nedlands', 'Cottesloe', 'Dalkeith', 'City Beach', 'Peppermint Grove'), each=10, times=2)#
+nei.sei <- rep(c(1, 2, 3, 3, 4, 5, 5, 6, 7, 8, 9, 9, 10, 10, 10), each=10, times=2)#
+nei.postbox <- rep(c(1, 1, 0, 1, 1, 3, 1, 3, 1, 3, 10, 8, 5, 5, 0), each=10, times=2)#
+stamped <- rep(c(1,0), times=1, each=150)#
+#
+return.stamped <- c(3, 5, 7, 3, 4, 5, 5, 9, 7, 4, 8, 6, 10, 8, 8)#
+return.unstamped <- c(4, 1, 3, 2, 1, 2, 3, 3, 2, 5, 3, 4, 3, 5, 4)#
+x <- c(return.stamped, return.unstamped)#
+returned <- integer(0)#
+for(i in 1:length(x)) returned <- c(returned, c(rep(1, times=x[i]), rep(0, times=10-x[i])))#
+#
+d <- data.frame(returned, stamped, nei, nei.sei, nei.postbox)
+d
+rm(list=ls())#
+#
+nei <- c('Medina', 'Kwinana', 'Hillman', 'Coolbellup', 'Warnbro', 'Rivervale', 'Willagee', 'Kallaroo', 'Madaley', 'Kingsley', 'Nedlands', 'Cottesloe', 'Dalkeith', 'City Beach', 'Peppermint Grove')#
+#
+nei.sei <- c(1, 2, 3, 3, 4, 5, 5, 6, 7, 8, 9, 9, 10, 10, 10)#
+#
+nei.postbox <- c(1, 1, 0, 1, 1, 3, 1, 3, 1, 3, 10, 8, 5, 5, 0)#
+#
+return.stamped <- c(3, 5, 7, 3, 4, 5, 5, 9, 7, 4, 8, 6, 10, 8, 8)#
+return.unstamped <- c(4, 1, 3, 2, 1, 2, 3, 3, 2, 5, 3, 4, 3, 5, 4)#
+#
+nei <- rep(c('Medina', 'Kwinana', 'Hillman', 'Coolbellup', 'Warnbro', 'Rivervale', 'Willagee', 'Kallaroo', 'Madaley', 'Kingsley', 'Nedlands', 'Cottesloe', 'Dalkeith', 'City Beach', 'Peppermint Grove'), each=10, times=2)#
+nei.sei <- rep(c(1, 2, 3, 3, 4, 5, 5, 6, 7, 8, 9, 9, 10, 10, 10), each=10, times=2)#
+nei.postbox <- rep(c(1, 1, 0, 1, 1, 3, 1, 3, 1, 3, 10, 8, 5, 5, 0), each=10, times=2)#
+stamped <- rep(c(1,0), times=1, each=150)#
+#
+return.stamped <- c(3, 5, 7, 3, 4, 5, 5, 9, 7, 4, 8, 6, 10, 8, 8)#
+return.unstamped <- c(4, 1, 3, 2, 1, 2, 3, 3, 2, 5, 3, 4, 3, 5, 4)#
+x <- c(return.stamped, return.unstamped)#
+returned <- integer(0)#
+for(i in 1:length(x)) returned <- c(returned, c(rep(1, times=x[i]), rep(0, times=10-x[i])))#
+#
+d <- data.frame(returned, stamped, nei, nei.sei, nei.postbox)#
+#
+require(lme4)#
+#
+m0 <- glmer(returned ~ (nei | 1), data=d)#
+m1 <- glmer(returned ~ nei.sei + stamped + nei.postbox + (nei | 1), data=d)
+m0 <- glmer(returned ~ (1 | nei), data=d)#
+m1 <- glmer(returned ~ nei.sei + stamped + nei.postbox + (1 | nei), data=d)
+m0 <- glmer(returned ~ (1 | nei), data=d, family='binomial')#
+m1 <- glmer(returned ~ nei.sei + stamped + nei.postbox + (1 | nei), data=d, family='binomial')
+library(rethinking)
+s(m0)
+precis(m0)
+d$nei
+summary(m0)
+fixef(m0)
+ranef(m0)
+ranef(m1)
+precis(m1)
+precis(m1, depth=2)
+exp(1.38)
+exp(-.320)
+d$unstamped <- 1-d$stamped#
+#
+require(lme4)#
+#
+m0 <- glmer(returned ~ (1 | nei), data=d, family='binomial')#
+m1 <- glmer(returned ~ nei.sei + unstamped + nei.postbox + (1 | nei), data=d, family='binomial')
+precis(m1)
+exp(-1.38)
+nei.sei
+logistic(-0.51)
+logistic(-0.51 - 1.38)
+logistic(-0.51 - 1.38 + 10*0.17)
+logistic(-0.51 + 10*0.17)
+.76/.45
+.45/.76
+summary(m1)
+ranef(m1)
+ranef(m0)
+ranef(m1)
+m1 <- glmer(returned ~ nei.sei + unstamped + nei.postbox + (1 | nei), data=d, family='binomial')
+m1
+summary(m1)
+ranef(m1)
+ranef(m1)$nei
+ranef(m1)$nei[1]
+ranef(m1)$nei[,1]
+d$nei
+d$nei.sei
+d$nei.postbox
+model0 <- alist(#
+	returned <- dbinom(p)#
+	logit(p) <- a[nei],#
+	a[nei] ~ dnorm(a_mu, a_sigma),#
+	a_mu ~ dnorm(0, 10),#
+	a_sigma ~ dcauchy(0, 1)#
+#
+)#
+#
+m0 <- map2stan(model0, data=d)
+model0 <- alist(#
+	returned <- dbinom(p),#
+	logit(p) <- a[nei],#
+	a[nei] ~ dnorm(a_mu, a_sigma),#
+	a_mu ~ dnorm(0, 10),#
+	a_sigma ~ dcauchy(0, 1)#
+#
+)#
+#
+m0 <- map2stan(model0, data=d)
+rm(list=ls())#
+#
+nei <- rep(c('Medina', 'Kwinana', 'Hillman', 'Coolbellup', 'Warnbro', 'Rivervale', 'Willagee', 'Kallaroo', 'Madaley', 'Kingsley', 'Nedlands', 'Cottesloe', 'Dalkeith', 'City Beach', 'Peppermint Grove'), each=10, times=2)#
+nei_sei <- rep(c(1, 2, 3, 3, 4, 5, 5, 6, 7, 8, 9, 9, 10, 10, 10), each=10, times=2)#
+nei_postbox <- rep(c(1, 1, 0, 1, 1, 3, 1, 3, 1, 3, 10, 8, 5, 5, 0), each=10, times=2)#
+stamped <- rep(c(1,0), times=1, each=150)#
+#
+return.stamped <- c(3, 5, 7, 3, 4, 5, 5, 9, 7, 4, 8, 6, 10, 8, 8)#
+return.unstamped <- c(4, 1, 3, 2, 1, 2, 3, 3, 2, 5, 3, 4, 3, 5, 4)#
+x <- c(return.stamped, return.unstamped)#
+returned <- integer(0)#
+for(i in 1:length(x)) returned <- c(returned, c(rep(1, times=x[i]), rep(0, times=10-x[i])))#
+#
+d <- data.frame(returned, stamped, nei, nei_sei, nei_postbox)#
+#
+d$unstamped <- 1-d$stamped#
+#
+require(lme4)#
+#
+m0 <- glmer(returned ~ (1 | nei), data=d, family='binomial')#
+m1 <- glmer(returned ~ nei_sei + unstamped + nei_postbox + (1 | nei), data=d, family='binomial')#
+model0 <- alist(#
+	returned <- dbinom(p),#
+	logit(p) <- a[nei],#
+	a[nei] ~ dnorm(a_mu, a_sigma),#
+	a_mu ~ dnorm(0, 10),#
+	a_sigma ~ dcauchy(0, 1)#
+#
+)#
+#
+m0 <- map2stan(model0, data=d)
+model0 <- alist(#
+	returned <- dbinom(p),#
+	logit(p) <- a,#
+	a ~ dnorm(0, 10)#
+)#
+#
+m0 <- map2stan(model0, data=d)
+d$returned
+model0 <- alist(#
+	returned ~ dbinom(p),#
+	logit(p) <- a,#
+	a ~ dnorm(0, 10)#
+)
+model0 <- alist(#
+	returned <- dbinom(p),#
+	logit(p) <- a,#
+	a ~ dnorm(0, 10)#
+)#
+#
+m0 <- map2stan(model0, data=d)
+model0 <- alist(#
+	returned ~ dbinom(p),#
+	logit(p) <- a,#
+	a ~ dnorm(0, 10)#
+)#
+#
+m0 <- map2stan(model0, data=d)
+model0 <- alist(#
+	returned ~ dbinom(1, prob=p),#
+	logit(p) <- a,#
+	a ~ dnorm(0, 10)#
+)#
+#
+m0 <- map2stan(model0, data=d)
+precis(m0)
+logistic(-0.17)
+mean(d$returned)
+m0 <- map(model0, data=d)
+precis(m0)
+model0 <- alist(#
+	returned <- dbinom(1, prob=p),#
+	logit(p) <- a[nei],#
+	a[nei] ~ dnorm(a_mu, a_sigma),#
+	a_mu ~ dnorm(0, 10),#
+	a_sigma ~ dcauchy(0, 1)#
+#
+)
+m0 <- map(model0, data=d)
+m0 <- map(model0, start=list(a_mu=-0.17, a_sigma=.1) data=d)
+m0 <- map(model0, start=list(a_mu=-0.17, a_sigma=.1), data=d)
+model0
+d$nei
+d$nei <- as.character(d$nei)#
+#
+model0 <- alist(#
+	returned <- dbinom(1, prob=p),#
+	logit(p) <- a[nei],#
+	a[nei] ~ dnorm(a_mu, a_sigma),#
+	a_mu ~ dnorm(0, 10),#
+	a_sigma ~ dcauchy(0, 1)#
+#
+)#
+m0 <- map(model0, start=list(a_mu=-0.17, a_sigma=.1), data=d)
+m0 <- map2stan(model0, start=list(a_mu=-0.17, a_sigma=.1), data=d)
+precis(m0)
+precis(m0, depth=2)
+model1 <- alist(#
+	returned <- dbinom(1, prob=p),#
+	logit(p) <- a[nei] + b_sei*nei_sei + b_unstamped*unstamped + b_post*nei*postbox,#
+	c(b_sei, b_unstamped, b_post) ~ dnorm(0, 10),#
+	a[nei] ~ dnorm(a_mu, a_sigma),#
+	a_mu ~ dnorm(0, 10),#
+	a_sigma ~ dcauchy(0, 1)#
+#
+)#
+#
+m1 <- map2stan(model1, start=list(a_mu=-0.17, a_sigma=.1, b_sei=0, b_unstamped=0, b_post=0), data=d)
+model1 <- alist(#
+	returned <- dbinom(1, prob=p),#
+	logit(p) <- a[nei] + b_sei*nei_sei + b_unstamped*unstamped + b_post*nei*nei_postbox,#
+	c(b_sei, b_unstamped, b_post) ~ dnorm(0, 10),#
+	a[nei] ~ dnorm(a_mu, a_sigma),#
+	a_mu ~ dnorm(0, 10),#
+	a_sigma ~ dcauchy(0, 1)#
+#
+)#
+#
+m1 <- map2stan(model1, start=list(a_mu=-0.17, a_sigma=.1, b_sei=0, b_unstamped=0, b_post=0), data=d)
+precis(m1)
+precis(m1, depth=2)
+model1 <- alist(#
+	returned <- dbinom(1, prob=p),#
+	logit(p) <- a + a_nei[nei] + b_sei*nei_sei + b_unstamped*unstamped + b_post*nei*nei_postbox,#
+	c(b_sei, b_unstamped, b_post) ~ dnorm(0, 10),#
+	a_nei[nei] ~ dnorm(0, a_sigma),#
+	a ~ dnorm(0, 10),#
+	a_sigma ~ dcauchy(0, 1)#
+#
+)#
+#
+m1 <- map2stan(model1, start=list(a_mu=-0.17, a_sigma=.1, b_sei=0, b_unstamped=0, b_post=0), data=d)
+plot(m1)
+precis(m1)
+precis(m1, depth=2)
+exp(-1.43)
+logistic(-e5)
+logistic(-.5)
+logistic(-.5-1.43)
+logistic(-.5+0.17*10)
+d$nei_sei_cat <- as.character(d$nei_sei)
+d$nei_sei_cat
+exp(-1.43)
+d$a_nei_stamp <- paste(d$nei, d$stamped)
+d$a_nei_stamp
+d$nei_unstamp <- paste(d$nei, d$unstamped)#
+#
+model2 <- alist(#
+	returned <- dbinom(1, prob=p),#
+	logit(p) <- a + a_nei[nei_unstamp] + b_sei*nei_sei + b_unstamped*unstamped + b_post*nei*nei_postbox + ,#
+	c(b_sei, b_unstamped, b_post) ~ dnorm(0, 10),#
+	a_nei[nei] ~ dnorm(0, a_sigma),#
+	a ~ dnorm(0, 10),#
+	a_sigma ~ dcauchy(0, 1)#
+#
+)#
+#
+m2 <- map2stan(model2, start=list(a=-0.17, a_sigma=.1, b_sei=0, b_unstamped=0, b_post=0), data=d)
+d$nei_unstamp <- paste(d$nei, d$unstamped)#
+#
+model2 <- alist(#
+	returned <- dbinom(1, prob=p),#
+	logit(p) <- a + a_nei[nei_unstamp] + b_sei*nei_sei + b_unstamped*unstamped + b_post*nei*nei_postbox,#
+	c(b_sei, b_unstamped, b_post) ~ dnorm(0, 10),#
+	a_nei[nei] ~ dnorm(0, a_sigma),#
+	a ~ dnorm(0, 10),#
+	a_sigma ~ dcauchy(0, 1)#
+#
+)#
+#
+m2 <- map2stan(model2, start=list(a=-0.17, a_sigma=.1, b_sei=0, b_unstamped=0, b_post=0), data=d)
+d$nei_unstamp <- paste(d$nei, d$unstamped)#
+#
+model2 <- alist(#
+	returned <- dbinom(1, prob=p),#
+	logit(p) <- a + a_nei[nei_unstamp] + b_sei*nei_sei + b_unstamped*unstamped + b_post*nei*nei_postbox,#
+	c(b_sei, b_unstamped, b_post) ~ dnorm(0, 10),#
+	a_nei[nei_unstamp] ~ dnorm(0, a_sigma),#
+	a ~ dnorm(0, 10),#
+	a_sigma ~ dcauchy(0, 1)#
+#
+)#
+#
+m2 <- map2stan(model2, start=list(a=-0.17, a_sigma=.1, b_sei=0, b_unstamped=0, b_post=0), data=d)
+d$nei_unstamped
+d$nei_unstamp
+d$nei_unstamp <- paste(d$nei, d$unstamped)#
+#
+model2 <- alist(#
+	returned <- dbinom(1, prob=p),#
+	logit(p) <- a + a_nei[nei_unstamp] + b_sei*nei_sei + b_post*nei*nei_postbox,#
+	c(b_sei, b_post) ~ dnorm(0, 10),#
+	a_nei[nei_unstamp] ~ dnorm(0, a_sigma),#
+	a ~ dnorm(0, 10),#
+	a_sigma ~ dcauchy(0, 1)#
+#
+)#
+#
+m2 <- map2stan(model2, start=list(a=-0.17, a_sigma=.1, b_sei=0, b_post=0), data=d)
+a$nei_sei_unstamp <- d$nei_sei*d$unstamped
+rm(list=ls())#
+#
+nei <- rep(c('Medina', 'Kwinana', 'Hillman', 'Coolbellup', 'Warnbro', 'Rivervale', 'Willagee', 'Kallaroo', 'Madaley', 'Kingsley', 'Nedlands', 'Cottesloe', 'Dalkeith', 'City Beach', 'Peppermint Grove'), each=10, times=2)#
+nei_sei <- rep(c(1, 2, 3, 3, 4, 5, 5, 6, 7, 8, 9, 9, 10, 10, 10), each=10, times=2)#
+nei_postbox <- rep(c(1, 1, 0, 1, 1, 3, 1, 3, 1, 3, 10, 8, 5, 5, 0), each=10, times=2)#
+stamped <- rep(c(1,0), times=1, each=150)#
+#
+return.stamped <- c(3, 5, 7, 3, 4, 5, 5, 9, 7, 4, 8, 6, 10, 8, 8)#
+return.unstamped <- c(4, 1, 3, 2, 1, 2, 3, 3, 2, 5, 3, 4, 3, 5, 4)#
+x <- c(return.stamped, return.unstamped)#
+returned <- integer(0)#
+for(i in 1:length(x)) returned <- c(returned, c(rep(1, times=x[i]), rep(0, times=10-x[i])))#
+#
+d <- data.frame(returned, stamped, nei, nei_sei, nei_postbox)#
+#
+d$unstamped <- 1-d$stamped#
+#
+require(lme4)#
+#
+m0 <- glmer(returned ~ (1 | nei), data=d, family='binomial')#
+m1 <- glmer(returned ~ nei_sei + unstamped + nei_postbox + (1 | nei), data=d, family='binomial')#
+model0 <- alist(#
+	returned ~ dbinom(1, prob=p),#
+	logit(p) <- a,#
+	a ~ dnorm(0, 10)#
+)#
+#
+m0 <- map(model0, data=d)#
+#
+d$nei <- as.character(d$nei)#
+#
+model0 <- alist(#
+	returned <- dbinom(1, prob=p),#
+	logit(p) <- a[nei],#
+	a[nei] ~ dnorm(a_mu, a_sigma),#
+	a_mu ~ dnorm(0, 10),#
+	a_sigma ~ dcauchy(0, 1)#
+#
+)#
+#
+m0 <- map2stan(model0, start=list(a_mu=-0.17, a_sigma=.1), data=d)#
+model1 <- alist(#
+	returned <- dbinom(1, prob=p),#
+	logit(p) <- a + a_nei[nei] + b_sei*nei_sei + b_unstamped*unstamped + b_post*nei*nei_postbox,#
+	c(b_sei, b_unstamped, b_post) ~ dnorm(0, 10),#
+	a_nei[nei] ~ dnorm(0, a_sigma),#
+	a ~ dnorm(0, 10),#
+	a_sigma ~ dcauchy(0, 1)#
+#
+)#
+#
+m1 <- map2stan(model1, start=list(a=-0.17, a_sigma=.1, b_sei=0, b_unstamped=0, b_post=0), data=d)#
+d$nei_unstamp <- paste(d$nei, d$unstamped)#
+#
+model2 <- alist(#
+	returned <- dbinom(1, prob=p),#
+	logit(p) <- a + a_nei[nei_unstamp] + b_sei*nei_sei + b_post*nei*nei_postbox,#
+	c(b_sei, b_post) ~ dnorm(0, 10),#
+	a_nei[nei_unstamp] ~ dnorm(0, a_sigma),#
+	a ~ dnorm(0, 10),#
+	a_sigma ~ dcauchy(0, 1)#
+#
+)#
+#
+m2 <- map2stan(model2, start=list(a=-0.17, a_sigma=.1, b_sei=0, b_post=0), data=d)
+d$nei_unstamp
+model1 <- alist(#
+	returned <- dbinom(1, prob=p),#
+	logit(p) <- a + a_nei[nei] + b_sei*nei_sei + b_unstamped*unstamped + b_post*nei_postbox,#
+	c(b_sei, b_unstamped, b_post) ~ dnorm(0, 10),#
+	a_nei[nei] ~ dnorm(0, a_sigma),#
+	a ~ dnorm(0, 10),#
+	a_sigma ~ dcauchy(0, 1)#
+#
+)#
+#
+m1 <- map2stan(model1, start=list(a=-0.17, a_sigma=.1, b_sei=0, b_unstamped=0, b_post=0), data=d)#
+d$nei_unstamp <- paste(d$nei, d$unstamped)#
+#
+model2 <- alist(#
+	returned <- dbinom(1, prob=p),#
+	logit(p) <- a + a_nei[nei_unstamp] + b_sei*nei_sei + b_post*nei_postbox,#
+	c(b_sei, b_post) ~ dnorm(0, 10),#
+	a_nei[nei_unstamp] ~ dnorm(0, a_sigma),#
+	a ~ dnorm(0, 10),#
+	a_sigma ~ dcauchy(0, 1)#
+#
+)#
+#
+m2 <- map2stan(model2, start=list(a=-0.17, a_sigma=.1, b_sei=0, b_post=0), data=d)
+d$nei_sei_unstamp <- d$nei_sei*d$unstamped#
+#
+model3 <- alist(#
+	returned <- dbinom(1, prob=p),#
+	logit(p) <- a + a_nei[nei] + b_sei*nei_sei + b_unstamped*unstamped + b_post*nei_postbox + b_sei_unstamp*nei_sei_unstamp,#
+	c(b_sei, b_unstamped, b_post, b_sei_unstamp) ~ dnorm(0, 10),#
+	a_nei[nei] ~ dnorm(0, a_sigma),#
+	a ~ dnorm(0, 10),#
+	a_sigma ~ dcauchy(0, 1)#
+#
+)#
+#
+m3 <- map2stan(model3, start=list(a=-0.17, a_sigma=.1, b_sei=0, b_unstamped=0, b_post=0, b_sei_unstamp=0), data=d)
+precis(m3)
+coeftab(m1, m2, m3)
+precis(m3)
+precis(m2)
+precis(m2, depth=2)
+precis(m1)
+summary(m1)
+logistic(-0.49 + 0.16*1:10)
+plot(1:10, logistic(-0.49 + 0.16*1:10))
+3.75/6
+3/4
+4.5/8
+3.5/5
+4.25/7
+5/9
+3/6
+3.75/8
+4.5/10
+getwd()
+setwd('/Volumes/FREECOM HD/bret/Projects/Tsimane Stuff/Group Papers/Aaron Anthropometry/repo')
+library(sitar)#
+#
+purify<-function(x,y,id,d,limit=3,count=3){#
+  d$count<-ave(rep(1,nrow(d)),d$PID,FUN=sum)#
+  d<-d[d$count >= count,]#
+  veloutT<-paste0("velout(x=",x,",y=",y,",id=",id,",data=d,limit=",limit,",linearise = TRUE)")#
+  #velout evaluates in parent, so need to load d into parent#
+  d<<-d#
+  outliers<-eval(parse(text=veloutT))#
+  print(table(outliers$code))#
+  out46<-sum(outliers$code %in% c(4,6))>0#
+  while(out46) {#
+    d[,y][outliers$code %in% c(4,6)]<-NA#
+    d$count<-ave(rep(1,nrow(d)),d$PID,FUN=sum)#
+    d<-d[d$count >= count,]#
+    d<<-d#
+    outliers<-eval(parse(text=veloutT))#
+    print(table(outliers$code))#
+    out46<-sum(outliers$code %in% c(4,6))>0#
+  }#
+  d<<-d#
+  outliers <- outliers<-eval(parse(text=veloutT))#
+  print(table(outliers$code))#
+  return(d)#
+}#
+anth<-read.csv("File S1 Tsimane growth data with z-scores.csv",stringsAsFactors = FALSE)#
+#
+#height#
+anthH<-anth[!is.na(anth$Height) & abs(anth$HAZ.T)<3,]#
+anthH<-anthH[order(anthH$PID,anthH$Age),]#
+#
+#older female height#
+anthHFO<-anthH[anthH$Sex=="Female" & anthH$Age>5 & anthH$Age<22,]#
+anthHFO<-purify(x="Age",y="Height",id="PID",d=anthHFO,limit=3)#
+anthHFO<-anthHFO[!is.na(anthHFO$Height),]#
+outliers<-velout(Age,Height,PID,anthHFO,limit=3,linearise = TRUE)#
+plot(Height~I(Age^0.65),data=anthHFO[outliers$code==0,])#
+mplot(Age,Height,PID,data=anthHFO)#
+#
+S.FO4<-sitar(x=Age^0.65,y=Height,PID,df=4,data=anthHFO,method="ML",control = nlmeControl(maxIter=50),verbose=TRUE)#
+plot(S.FO4, y2par=list(col='blue'), apv=TRUE)#
+# S.FO5 <- update(S.FO4, df=5)#
+# S.FO6 <- update(S.FO5, df=6)#
+# S.FO7 <- update(S.FO6, df=7)#
+# S.FO3 <- update(S.FO4, df=3)#
+# S.FO2 <- update(S.FO3, df=2)#
+# #
+# varexp(S.FO2,S.FO3,S.FO4,S.FO5,S.FO6,S.FO7)#
+# BICadj(S.FO2,S.FO3,S.FO4,S.FO5,S.FO6,S.FO7)#
+#S.F04 appears to have the lowest BIC, though 3 is close#
+S.FO<-S.FO4 #
+#young female height#
+anthHFY<-anthH[anthH$Sex=="Female" & anthH$Age<5,]#
+anthHFY<-purify(x="Age",y="Height",id="PID",d=anthHFY,limit=3)#
+anthHFY<-anthHFY[!is.na(anthHFY$Height),]#
+plot(Height~I(Age^0.65),data=anthHFY)#
+mplot(Age^0.65,Height,PID,data=anthHFY)#
+S.FY4<-sitar(x=Age^0.75,y=Height,PID,df=4,random="a+c",xoffset=3,data=anthHFY,control = nlmeControl(maxIter=100),verbose=TRUE)#
+#S.FY3 <- update(S.FY4, df=3)#
+#S.FY5 <- update(S.FY4, df=5)#
+#S.FY6 <- update(S.FY5, df=6)#
+#S.FY7 <- update(S.FY6, df=7)#
+#S.FY3 <- update(S.FY4, df=4)#
+#S.FY2 <- update(S.FY3, df=2)#
+# varexp(S.FY3,S.FY4,S.FY5,S.FY6,S.FY7)#
+# BICadj(S.FY3,S.FY4,S.FY5,S.FY6,S.FY7)#
+plot(S.FY4, y2par=list(col='blue'))#
+S.FY<-S.FY4#
+#
+#older male height#
+anthHMO<-anthH[anthH$Sex=="Male" & anthH$Age>5 & anthH$Age<25,]#
+anthHMO<-purify(x="Age",y="Height",id="PID",d=anthHMO,limit=3)#
+anthHMO<-anthHMO[!is.na(anthHMO$Height),]#
+outliers<-velout(Age,Height,PID,anthHMO,limit=3,linearise = TRUE)#
+#
+plot(Height~I(Age^0.65),data=anthHMO[outliers$code==0,])#
+mplot(Age,Height,PID,data=anthHMO)#
+S.MO3<-sitar(x=Age^0.65,y=Height,PID,df=3,data=anthHMO,method="REML",control = nlmeControl(maxIter=100),verbose=TRUE)#
+plot(S.MO3, y2par=list(col='blue'),apv=TRUE)#
+#
+#S.MO5 <- update(S.MO4, df=5)#
+#S.MO6 <- update(S.MO5, df=6)#
+#S.MO7 <- update(S.MO6, df=7)#
+#S.MO4 <- update(S.MO3, df=4)#
+#S.MO2 <- update(S.MO3, df=2) won't converge#
+# varexp(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7)#
+# BICadj(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7)#
+#S.MO3 seems to win#
+plot(S.MO3, y2par=list(col='blue'),apv=TRUE)#
+#save(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7,file="S.MO")#
+S.MO<-S.MO3#
+#
+#young male height#
+anthHMY<-anthH[anthH$Sex=="Male" & anthH$Age<7,]#
+anthHMY<-purify(x="Age",y="Height",id="PID",d=anthHMY,limit=3)#
+anthHMY<-anthHMY[!is.na(anthHMY$Height),]#
+outliers<-velout(Age,Height,PID,anthHMY,limit=3,linearise = TRUE)#
+plot(Height~I(Age^0.6),data=anthHMY)#
+mplot(Age^0.65,Height,PID,data=anthHMY[1000:1500,])#
+S.MY4<-sitar(x=Age^0.6,y=Height,PID,random="a+c",xoffset=3,df=4,data=anthHMY,control = nlmeControl(maxIter=100),verbose=TRUE)#
+plot(S.MY4, y2par=list(col='blue'))#
+#S.MY3 <- update(S.MY4, df=3)#
+#S.MY5 <- update(S.MY4, df=5)#
+#S.MY6 <- update(S.MY5, df=6)#
+#S.MY7 <- update(S.MY6, df=7)#
+#S.MY2 <- update(S.MY3, df=2)#
+#varexp(S.MY3,S.MY4)#
+#BICadj(S.MY3,S.MY4)#
+#save(S.MY2,S.MY3,S.MY4,S.MY5,S.MY6,file="S.FM")#
+#plot(S.MY4, y2par=list(col='blue'))#
+#4df lowest BIC#
+S.MY<-S.MY4#
+#
+save(S.FO,S.FY,S.MO,S.MY,anthHFY,anthHFO,anthHMY,anthHMO,file="sitarModelsH")#
+#weight#
+anthW<-anth[!is.na(anth$Weight) & abs(anth$WAZ.T)<3,]#
+anthW<-anthW[order(anthW$PID,anthW$Age),]#
+#
+#older female Weight#
+anthWFO<-anthW[anthW$Sex=="Female" & anthW$Age>5 & anthW$Age<22,]#
+anthWFO<-purify(x="Age",y="Weight",id="PID",d=anthWFO,limit=3)#
+anthWFO<-anthWFO[!is.na(anthWFO$Weight),]#
+outliers<-velout(Age,Weight,PID,anthWFO,limit=3,linearise = TRUE)#
+plot(Weight~I(Age^0.65),data=anthWFO[outliers$code==0,])#
+mplot(Age,Weight,PID,data=anthWFO)#
+#
+SW.FO4<-sitar(x=Age^0.65,y=Weight,PID,df=4,data=anthWFO,method="ML",control = nlmeControl(maxIter=50),verbose=TRUE)#
+plot(SW.FO4, y2par=list(col='blue'), apv=TRUE)#
+# S.FO5 <- update(SW.FO4, df=5)#
+# S.FO6 <- update(S.FO5, df=6)#
+# S.FO7 <- update(S.FO6, df=7)#
+# S.FO3 <- update(SW.FO4, df=3)#
+# S.FO2 <- update(S.FO3, df=2)#
+# #
+# varexp(S.FO4,S.FO5)#
+# BICadj(S.FO4,S.FO5)#
+#only 4 and 5 will converge. 4 is best#
+SW.FO<-SW.FO4 #
+#
+#young female Weight#
+anthWFY<-anthW[anthW$Sex=="Female" & anthW$Age<7,]#
+anthWFY<-purify(x="Age",y="Weight",id="PID",d=anthWFY,limit=3)#
+anthWFY<-anthWFY[!is.na(anthWFY$Weight),]#
+plot(Weight~I(Age^0.75),data=anthWFY)#
+mplot(Age,Weight,PID,data=anthWFY)#
+SW.FY3<-sitar(x=Age^0.65,y=Weight,PID,random="a+c",xoffset=3,df=3,data=anthWFY,control = nlmeControl(maxIter=50),verbose=TRUE)#
+plot(SW.FY3, y2par=list(col='blue'))#
+# SW.FY4 <- update(SW.FY3, df=4)#
+# SW.FY5 <- update(SW.FY4, df=5)#
+# SW.FY6 <- update(SW.FY5, df=6)#
+# SW.FY7 <- update(SW.FY6, df=7)#
+# SW.FY2 <- update(SW.FY3, df=2)#
+ #2,3,4, converge#
+# varexp(S.FY5,S.FY3,S.FY4)#
+# BICadj(SW.FY5,SW.FY3,SW.FY4)#
+SW.FY<-SW.FY3#
+#
+#older male Weight#
+anthWMO<-anthW[anthW$Sex=="Male" & anthW$Age>5 & anthW$Age<25,]#
+anthWMO<-purify(x="Age",y="Weight",id="PID",d=anthWMO,limit=3)#
+anthWMO<-anthWMO[!is.na(anthWMO$Weight),]#
+outliers<-velout(Age,Weight,PID,anthWMO,limit=3,linearise = TRUE)#
+#
+plot(Weight~I(Age^0.65),data=anthWMO[outliers$code==0,])#
+mplot(Age,Weight,PID,data=anthWMO)#
+SW.MO3<-sitar(x=Age^0.65,y=Weight,PID,df=3,data=anthWMO,control = nlmeControl(maxIter=100),verbose=TRUE)#
+plot(SW.MO3, y2par=list(col='blue'),apv=TRUE)#
+# S.MO4 <- update(SW.MO3, df=4)#
+# S.MO5 <- update(S.MO4, df=5)#
+# S.MO6 <- update(S.MO5, df=6)#
+# S.MO7 <- update(S.MO6, df=7)#
+# #
+# #S.MO2 <- update(S.MO3, df=2)#
+# #
+# varexp(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7)#
+# BICadj(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7)#
+#S.MO3 seems to win#
+SW.MO<-SW.MO3#
+#
+#young male Weight#
+anthWMY<-anthW[anthW$Sex=="Male" & anthW$Age<7,]#
+anthWMY<-purify(x="Age",y="Weight",id="PID",d=anthWMY,limit=3)#
+anthWMY<-anthWMY[!is.na(anthWMY$Weight),]#
+outliers<-velout(Age,Weight,PID,anthWMY,limit=3,linearise = TRUE)#
+plot(Weight~I(Age^0.75),data=anthWMY)#
+mplot(Age^0.75,Weight,PID,data=anthWMY[1000:1500,])#
+SW.MY4<-sitar(x=Age^0.65,y=Weight,PID,random="a+c",xoffset=2,df=4,data=anthWMY,control = nlmeControl(maxIter=100),verbose=TRUE)#
+plot(SW.MY4, y2par=list(col='blue'))#
+SW.MY3 <- update(SW.MY4, df=3)#
+SW.MY2 <- update(SW.MY3, df=2)#
+SW.MY5 <- update(SW.MY4, df=5)#
+S.MY6 <- update(S.MY5, df=6)#
+S.MY7 <- update(S.MY6, df=7)#
+# #
+# #
+# varexp(S.MY2,S.MY3)#
+BICadj(SW.MY4,SW.MY5)#
+#6df lowest BIC#
+SW.MY<-SW.MY4#
+#
+save(SW.FO,SW.FY,SW.MO,SW.MY,anthWFY,anthWFO,anthWMY,anthWMO,file="sitarModelsW")#
+#recombine height and wight data frames to create a merged data frame for BMI #
+anthC<-merge(anthH[,c("PID","Sex","Age","Height")],anthW[,c("PID","Sex","Age","Weight")],all=TRUE)#
+#
+#BMI#
+anthC$BMI<-anthC$Weight/(anthC$Height/100)^2#
+#
+anthB<-anthC[!is.na(anthC$BMI),]#
+anthB<-anthB[order(anthB$PID,anthB$Age),]#
+#
+#older female BMI#
+anthBFO<-anthB[anthB$Sex=="Female" & anthB$Age>5 & anthB$Age<22,]#
+anthBFO<-purify(x="Age",y="BMI",id="PID",d=anthBFO,limit=3)#
+anthBFO<-anthBFO[!is.na(anthBFO$BMI),]#
+outliers<-velout(Age,BMI,PID,anthBFO,limit=3,linearise = TRUE)#
+plot(BMI~I(Age^0.65),data=anthBFO)#
+mplot(Age^0.4,BMI,PID,data=anthBFO)#
+#
+SB.FO3<-sitar(x=Age^0.65,y=BMI,PID,df=3,data=anthBFO,control = nlmeControl(maxIter=50),verbose=TRUE)#
+plot(SB.FO3, y2par=list(col='blue'), apv=TRUE)#
+SB.FO4 <- update(SB.FO3, df=4)#
+# S.FO5 <- update(S.FO4, df=5)
+rm(list=ls())#
+#
+#SITAR#
+library(sitar)#
+#
+purify<-function(x,y,id,d,limit=3,count=3){#
+  d$count<-ave(rep(1,nrow(d)),d$PID,FUN=sum)#
+  d<-d[d$count >= count,]#
+  veloutT<-paste0("velout(x=",x,",y=",y,",id=",id,",data=d,limit=",limit,",linearise = TRUE)")#
+  #velout evaluates in parent, so need to load d into parent#
+  d<<-d#
+  outliers<-eval(parse(text=veloutT))#
+  print(table(outliers$code))#
+  out46<-sum(outliers$code %in% c(4,6))>0#
+  while(out46) {#
+    d[,y][outliers$code %in% c(4,6)]<-NA#
+    d$count<-ave(rep(1,nrow(d)),d$PID,FUN=sum)#
+    d<-d[d$count >= count,]#
+    d<<-d#
+    outliers<-eval(parse(text=veloutT))#
+    print(table(outliers$code))#
+    out46<-sum(outliers$code %in% c(4,6))>0#
+  }#
+  d<<-d#
+  outliers <- outliers<-eval(parse(text=veloutT))#
+  print(table(outliers$code))#
+  return(d)#
+}#
+anth<-read.csv("File S1 Tsimane growth data with z-scores.csv",stringsAsFactors = FALSE)#
+#
+#height#
+anthH<-anth[!is.na(anth$Height) & abs(anth$HAZ.T)<3,]#
+anthH<-anthH[order(anthH$PID,anthH$Age),]#
+#
+#older female height#
+anthHFO<-anthH[anthH$Sex=="Female" & anthH$Age>5 & anthH$Age<22,]#
+anthHFO<-purify(x="Age",y="Height",id="PID",d=anthHFO,limit=3)#
+anthHFO<-anthHFO[!is.na(anthHFO$Height),]#
+outliers<-velout(Age,Height,PID,anthHFO,limit=3,linearise = TRUE)#
+plot(Height~I(Age^0.65),data=anthHFO[outliers$code==0,])#
+mplot(Age,Height,PID,data=anthHFO)#
+#
+S.FO4<-sitar(x=Age^0.65,y=Height,PID,df=4,data=anthHFO,method="ML",control = nlmeControl(maxIter=50),verbose=TRUE)#
+plot(S.FO4, y2par=list(col='blue'), apv=TRUE)#
+# S.FO5 <- update(S.FO4, df=5)#
+# S.FO6 <- update(S.FO5, df=6)#
+# S.FO7 <- update(S.FO6, df=7)#
+# S.FO3 <- update(S.FO4, df=3)#
+# S.FO2 <- update(S.FO3, df=2)#
+# #
+# varexp(S.FO2,S.FO3,S.FO4,S.FO5,S.FO6,S.FO7)#
+# BICadj(S.FO2,S.FO3,S.FO4,S.FO5,S.FO6,S.FO7)#
+#S.F04 appears to have the lowest BIC, though 3 is close#
+S.FO<-S.FO4 #
+#young female height#
+anthHFY<-anthH[anthH$Sex=="Female" & anthH$Age<5,]#
+anthHFY<-purify(x="Age",y="Height",id="PID",d=anthHFY,limit=3)#
+anthHFY<-anthHFY[!is.na(anthHFY$Height),]#
+plot(Height~I(Age^0.65),data=anthHFY)#
+mplot(Age^0.65,Height,PID,data=anthHFY)#
+S.FY4<-sitar(x=Age^0.75,y=Height,PID,df=4,random="a+c",xoffset=3,data=anthHFY,control = nlmeControl(maxIter=100),verbose=TRUE)#
+#S.FY3 <- update(S.FY4, df=3)#
+#S.FY5 <- update(S.FY4, df=5)#
+#S.FY6 <- update(S.FY5, df=6)#
+#S.FY7 <- update(S.FY6, df=7)#
+#S.FY3 <- update(S.FY4, df=4)#
+#S.FY2 <- update(S.FY3, df=2)#
+# varexp(S.FY3,S.FY4,S.FY5,S.FY6,S.FY7)#
+# BICadj(S.FY3,S.FY4,S.FY5,S.FY6,S.FY7)#
+plot(S.FY4, y2par=list(col='blue'))#
+S.FY<-S.FY4#
+#
+#older male height#
+anthHMO<-anthH[anthH$Sex=="Male" & anthH$Age>5 & anthH$Age<25,]#
+anthHMO<-purify(x="Age",y="Height",id="PID",d=anthHMO,limit=3)#
+anthHMO<-anthHMO[!is.na(anthHMO$Height),]#
+outliers<-velout(Age,Height,PID,anthHMO,limit=3,linearise = TRUE)#
+#
+plot(Height~I(Age^0.65),data=anthHMO[outliers$code==0,])#
+mplot(Age,Height,PID,data=anthHMO)#
+S.MO3<-sitar(x=Age^0.65,y=Height,PID,df=3,data=anthHMO,method="REML",control = nlmeControl(maxIter=100),verbose=TRUE)#
+plot(S.MO3, y2par=list(col='blue'),apv=TRUE)#
+#
+#S.MO5 <- update(S.MO4, df=5)#
+#S.MO6 <- update(S.MO5, df=6)#
+#S.MO7 <- update(S.MO6, df=7)#
+#S.MO4 <- update(S.MO3, df=4)#
+#S.MO2 <- update(S.MO3, df=2) won't converge#
+# varexp(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7)#
+# BICadj(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7)#
+#S.MO3 seems to win#
+plot(S.MO3, y2par=list(col='blue'),apv=TRUE)#
+#save(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7,file="S.MO")#
+S.MO<-S.MO3#
+#
+#young male height#
+anthHMY<-anthH[anthH$Sex=="Male" & anthH$Age<7,]#
+anthHMY<-purify(x="Age",y="Height",id="PID",d=anthHMY,limit=3)#
+anthHMY<-anthHMY[!is.na(anthHMY$Height),]#
+outliers<-velout(Age,Height,PID,anthHMY,limit=3,linearise = TRUE)#
+plot(Height~I(Age^0.6),data=anthHMY)#
+mplot(Age^0.65,Height,PID,data=anthHMY[1000:1500,])#
+S.MY4<-sitar(x=Age^0.6,y=Height,PID,random="a+c",xoffset=3,df=4,data=anthHMY,control = nlmeControl(maxIter=100),verbose=TRUE)#
+plot(S.MY4, y2par=list(col='blue'))#
+#S.MY3 <- update(S.MY4, df=3)#
+#S.MY5 <- update(S.MY4, df=5)#
+#S.MY6 <- update(S.MY5, df=6)#
+#S.MY7 <- update(S.MY6, df=7)#
+#S.MY2 <- update(S.MY3, df=2)#
+#varexp(S.MY3,S.MY4)#
+#BICadj(S.MY3,S.MY4)#
+#save(S.MY2,S.MY3,S.MY4,S.MY5,S.MY6,file="S.FM")#
+#plot(S.MY4, y2par=list(col='blue'))#
+#4df lowest BIC#
+S.MY<-S.MY4#
+#
+save(S.FO,S.FY,S.MO,S.MY,anthHFY,anthHFO,anthHMY,anthHMO,file="sitarModelsH")
+#weight#
+anthW<-anth[!is.na(anth$Weight) & abs(anth$WAZ.T)<3,]#
+anthW<-anthW[order(anthW$PID,anthW$Age),]#
+#
+#older female Weight#
+anthWFO<-anthW[anthW$Sex=="Female" & anthW$Age>5 & anthW$Age<22,]#
+anthWFO<-purify(x="Age",y="Weight",id="PID",d=anthWFO,limit=3)#
+anthWFO<-anthWFO[!is.na(anthWFO$Weight),]#
+outliers<-velout(Age,Weight,PID,anthWFO,limit=3,linearise = TRUE)#
+plot(Weight~I(Age^0.65),data=anthWFO[outliers$code==0,])#
+mplot(Age,Weight,PID,data=anthWFO)#
+#
+SW.FO4<-sitar(x=Age^0.65,y=Weight,PID,df=4,data=anthWFO,method="ML",control = nlmeControl(maxIter=50),verbose=TRUE)#
+plot(SW.FO4, y2par=list(col='blue'), apv=TRUE)#
+# S.FO5 <- update(SW.FO4, df=5)#
+# S.FO6 <- update(S.FO5, df=6)#
+# S.FO7 <- update(S.FO6, df=7)#
+# S.FO3 <- update(SW.FO4, df=3)#
+# S.FO2 <- update(S.FO3, df=2)#
+# #
+# varexp(S.FO4,S.FO5)#
+# BICadj(S.FO4,S.FO5)#
+#only 4 and 5 will converge. 4 is best#
+SW.FO<-SW.FO4 #
+#
+#young female Weight#
+anthWFY<-anthW[anthW$Sex=="Female" & anthW$Age<7,]#
+anthWFY<-purify(x="Age",y="Weight",id="PID",d=anthWFY,limit=3)#
+anthWFY<-anthWFY[!is.na(anthWFY$Weight),]#
+plot(Weight~I(Age^0.75),data=anthWFY)#
+mplot(Age,Weight,PID,data=anthWFY)#
+SW.FY3<-sitar(x=Age^0.65,y=Weight,PID,random="a+c",xoffset=3,df=3,data=anthWFY,control = nlmeControl(maxIter=50),verbose=TRUE)#
+plot(SW.FY3, y2par=list(col='blue'))#
+# SW.FY4 <- update(SW.FY3, df=4)#
+# SW.FY5 <- update(SW.FY4, df=5)#
+# SW.FY6 <- update(SW.FY5, df=6)#
+# SW.FY7 <- update(SW.FY6, df=7)#
+# SW.FY2 <- update(SW.FY3, df=2)#
+ #2,3,4, converge#
+# varexp(S.FY5,S.FY3,S.FY4)#
+# BICadj(SW.FY5,SW.FY3,SW.FY4)#
+SW.FY<-SW.FY3#
+#
+#older male Weight#
+anthWMO<-anthW[anthW$Sex=="Male" & anthW$Age>5 & anthW$Age<25,]#
+anthWMO<-purify(x="Age",y="Weight",id="PID",d=anthWMO,limit=3)#
+anthWMO<-anthWMO[!is.na(anthWMO$Weight),]#
+outliers<-velout(Age,Weight,PID,anthWMO,limit=3,linearise = TRUE)#
+#
+plot(Weight~I(Age^0.65),data=anthWMO[outliers$code==0,])#
+mplot(Age,Weight,PID,data=anthWMO)#
+SW.MO3<-sitar(x=Age^0.65,y=Weight,PID,df=3,data=anthWMO,control = nlmeControl(maxIter=100),verbose=TRUE)#
+plot(SW.MO3, y2par=list(col='blue'),apv=TRUE)#
+# S.MO4 <- update(SW.MO3, df=4)#
+# S.MO5 <- update(S.MO4, df=5)#
+# S.MO6 <- update(S.MO5, df=6)#
+# S.MO7 <- update(S.MO6, df=7)#
+# #
+# #S.MO2 <- update(S.MO3, df=2)#
+# #
+# varexp(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7)#
+# BICadj(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7)#
+#S.MO3 seems to win#
+SW.MO<-SW.MO3#
+#
+#young male Weight#
+anthWMY<-anthW[anthW$Sex=="Male" & anthW$Age<7,]#
+anthWMY<-purify(x="Age",y="Weight",id="PID",d=anthWMY,limit=3)#
+anthWMY<-anthWMY[!is.na(anthWMY$Weight),]#
+outliers<-velout(Age,Weight,PID,anthWMY,limit=3,linearise = TRUE)#
+plot(Weight~I(Age^0.75),data=anthWMY)#
+mplot(Age^0.75,Weight,PID,data=anthWMY[1000:1500,])#
+SW.MY4<-sitar(x=Age^0.65,y=Weight,PID,random="a+c",xoffset=2,df=4,data=anthWMY,control = nlmeControl(maxIter=100),verbose=TRUE)#
+plot(SW.MY4, y2par=list(col='blue'))#
+SW.MY3 <- update(SW.MY4, df=3)#
+SW.MY2 <- update(SW.MY3, df=2)#
+SW.MY5 <- update(SW.MY4, df=5)#
+S.MY6 <- update(S.MY5, df=6)#
+S.MY7 <- update(S.MY6, df=7)#
+# #
+# #
+# varexp(S.MY2,S.MY3)#
+BICadj(SW.MY4,SW.MY5)#
+#6df lowest BIC#
+SW.MY<-SW.MY4#
+#
+save(SW.FO,SW.FY,SW.MO,SW.MY,anthWFY,anthWFO,anthWMY,anthWMO,file="sitarModelsW")
+anthWMY<-anthW[anthW$Sex=="Male" & anthW$Age<7,]#
+anthWMY<-purify(x="Age",y="Weight",id="PID",d=anthWMY,limit=3)#
+anthWMY<-anthWMY[!is.na(anthWMY$Weight),]#
+outliers<-velout(Age,Weight,PID,anthWMY,limit=3,linearise = TRUE)#
+plot(Weight~I(Age^0.75),data=anthWMY)#
+mplot(Age^0.75,Weight,PID,data=anthWMY[1000:1500,])#
+SW.MY4<-sitar(x=Age^0.65,y=Weight,PID,random="a+c",xoffset=2,df=4,data=anthWMY,control = nlmeControl(maxIter=100),verbose=TRUE)#
+plot(SW.MY4, y2par=list(col='blue'))
+SW.MY3 <- update(SW.MY4, df=3) # error here#
+SW.MY2 <- update(SW.MY3, df=2) # error here#
+SW.MY5 <- update(SW.MY4, df=5) # error here
+S.MY6 <- update(S.MY5, df=6)#
+S.MY7 <- update(S.MY6, df=7)
+#recombine height and wight data frames to create a merged data frame for BMI #
+anthC<-merge(anthH[,c("PID","Sex","Age","Height")],anthW[,c("PID","Sex","Age","Weight")],all=TRUE)#
+#
+#BMI#
+anthC$BMI<-anthC$Weight/(anthC$Height/100)^2#
+#
+anthB<-anthC[!is.na(anthC$BMI),]#
+anthB<-anthB[order(anthB$PID,anthB$Age),]#
+#
+#older female BMI#
+anthBFO<-anthB[anthB$Sex=="Female" & anthB$Age>5 & anthB$Age<22,]#
+anthBFO<-purify(x="Age",y="BMI",id="PID",d=anthBFO,limit=3)#
+anthBFO<-anthBFO[!is.na(anthBFO$BMI),]#
+outliers<-velout(Age,BMI,PID,anthBFO,limit=3,linearise = TRUE)#
+plot(BMI~I(Age^0.65),data=anthBFO)#
+mplot(Age^0.4,BMI,PID,data=anthBFO)#
+#
+SB.FO3<-sitar(x=Age^0.65,y=BMI,PID,df=3,data=anthBFO,control = nlmeControl(maxIter=50),verbose=TRUE)#
+plot(SB.FO3, y2par=list(col='blue'), apv=TRUE)#
+SB.FO4 <- update(SB.FO3, df=4)#
+# S.FO5 <- update(S.FO4, df=5)#
+# S.FO6 <- update(S.FO5, df=6)#
+# S.FO7 <- update(S.FO6, df=7)#
+# S.FO2 <- update(S.FO3, df=2)#
+#
+varexp(S.FO4,S.FO5)#
+BICadj(S.FO4,S.FO5)#
+#3 only one that will converge#
+SB.FO<-SB.FO3#
+#
+#young female BMI#
+anthBFY<-anthB[anthB$Sex=="Female" & anthB$Age<7,]#
+anthBFY<-purify(x="Age",y="BMI",id="PID",d=anthBFY,limit=3)#
+anthBFY<-anthBFY[!is.na(anthBFY$BMI),]#
+plot(BMI~I(Age^0.9),data=anthBFY)#
+mplot(Age^0.9,BMI,PID,data=anthBFY)#
+SB.FY4<-sitar(x=Age^0.9,y=BMI,PID,random="a+c",xoffset=2,df=4,data=anthBFY,control = nlmeControl(maxIter=50),verbose=TRUE)#
+plot(SB.FY4, y2par=list(col='blue'))#
+SB.FY5 <- update(SB.FY4, df=5)#
+SB.FY6 <- update(SB.FY5, df=6)#
+SB.FY7 <- update(SB.FY6, df=7)#
+SB.FY3 <- update(SB.FY4, df=4)#
+SB.FY2 <- update(SB.FY3, df=2)#
+varexp(SB.FY3,SB.FY4,SB.FY5)#
+BICadj(SB.FY3,SB.FY4,SB.FY5)#
+#only 4 converges#
+SB.FY<-SB.FY3#
+#
+#older male BMI#
+anthBMO<-anthB[anthB$Sex=="Male" & anthB$Age>5 & anthB$Age<25,]#
+anthBMO<-purify(x="Age",y="BMI",id="PID",d=anthBMO,limit=3,count=3)#
+anthBMO<-anthBMO[!is.na(anthBMO$BMI),]#
+outliers<-velout(Age,BMI,PID,anthBMO,limit=3,linearise = TRUE)#
+#
+plot(BMI~I(Age^0.65),data=anthBMO[outliers$code==0,])#
+mplot(Age,BMI,PID,data=anthBMO)#
+SB.MO4<-sitar(x=Age^0.65,y=BMI,PID,df=4,data=anthBMO,control = nlmeControl(maxIter=100,minScale=0.000001),verbose=TRUE)#
+SB.MO6<-sitar(x=Age^0.65,y=BMI,PID,df=6,data=anthBMO,control = nlmeControl(maxIter=100),verbose=TRUE)#
+plot(SB.MO6, y2par=list(col='blue'),apv=TRUE)#
+#
+SB.MO5 <- update(SB.MO4, df=5)#
+SB.MO6 <- update(SB.MO5, df=6)#
+SB.MO7 <- update(SB.MO6, df=7)#
+SB.MO3 <- update(SB.MO4, df=3)#
+#S.MO2 <- update(S.MO3, df=2) won't converge#
+#
+#varexp(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7)#
+BICadj(SB.MO4,SB.MO6)#
+#4 only one to converge#
+#plot(S.MO4, y2par=list(col='blue'),apv=TRUE)#
+#save(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7,file="S.MO")#
+SB.MO<-SB.MO4#
+#
+#young male BMI#
+anthBMY<-anthB[anthB$Sex=="Male" & anthB$Age<7,]#
+anthBMY<-purify(x="Age",y="BMI",id="PID",d=anthBMY,limit=3)#
+anthBMY<-anthBMY[!is.na(anthBMY$BMI),]#
+outliers<-velout(Age,BMI,PID,anthBMY,limit=3,linearise = TRUE)#
+plot(BMI~I(Age^0.9),data=anthBMY)#
+mplot(Age^0.9,BMI,PID,data=anthBMY)#
+SB.MY4<-sitar(x=Age^0.9,y=BMI,PID,random="a+c",xoffset=0,df=4,data=anthBMY,control = nlmeControl(maxIter=100),verbose=TRUE)#
+plot(SB.MY4, y2par=list(col='blue'))#
+SB.MY5 <- update(SB.MY4, df=5)#
+SB.MY6 <- update(SB.MY5, df=6)#
+SB.MY7 <- update(SB.MY6, df=7)#
+SB.MY3 <- update(SB.MY4, df=3)#
+SB.MY2 <- update(SB.MY3, df=2)#
+varexp(S.MY4,S.MY5)#
+BICadj(SB.MY4,SB.MY5,SB.MY6,SB.MY7)#
+#only 4 again#
+plot(S.MY3, y2par=list(col='blue'))#
+#3df lowest BIC#
+SB.MY<-SB.MY4#
+#
+save(SB.FO,SB.FY,SB.MO,SB.MY,anthBMY,anthBMO,anthBFY,anthBFO,file="sitarModelsB")
+rm(list=ls())#
+#
+#SITAR#
+library(sitar)#
+#
+purify<-function(x,y,id,d,limit=3,count=3){#
+  d$count<-ave(rep(1,nrow(d)),d$PID,FUN=sum)#
+  d<-d[d$count >= count,]#
+  veloutT<-paste0("velout(x=",x,",y=",y,",id=",id,",data=d,limit=",limit,",linearise = TRUE)")#
+  #velout evaluates in parent, so need to load d into parent#
+  d<<-d#
+  outliers<-eval(parse(text=veloutT))#
+  print(table(outliers$code))#
+  out46<-sum(outliers$code %in% c(4,6))>0#
+  while(out46) {#
+    d[,y][outliers$code %in% c(4,6)]<-NA#
+    d$count<-ave(rep(1,nrow(d)),d$PID,FUN=sum)#
+    d<-d[d$count >= count,]#
+    d<<-d#
+    outliers<-eval(parse(text=veloutT))#
+    print(table(outliers$code))#
+    out46<-sum(outliers$code %in% c(4,6))>0#
+  }#
+  d<<-d#
+  outliers <- outliers<-eval(parse(text=veloutT))#
+  print(table(outliers$code))#
+  return(d)#
+}#
+anth<-read.csv("File S1 Tsimane growth data with z-scores.csv",stringsAsFactors = FALSE)#
+#
+#height#
+anthH<-anth[!is.na(anth$Height) & abs(anth$HAZ.T)<3,]#
+anthH<-anthH[order(anthH$PID,anthH$Age),]#
+#
+#older female height#
+anthHFO<-anthH[anthH$Sex=="Female" & anthH$Age>5 & anthH$Age<22,]#
+anthHFO<-purify(x="Age",y="Height",id="PID",d=anthHFO,limit=3)#
+anthHFO<-anthHFO[!is.na(anthHFO$Height),]#
+outliers<-velout(Age,Height,PID,anthHFO,limit=3,linearise = TRUE)#
+plot(Height~I(Age^0.65),data=anthHFO[outliers$code==0,])#
+mplot(Age,Height,PID,data=anthHFO)#
+#
+S.FO4<-sitar(x=Age^0.65,y=Height,PID,df=4,data=anthHFO,method="ML",control = nlmeControl(maxIter=50),verbose=TRUE)#
+plot(S.FO4, y2par=list(col='blue'), apv=TRUE)#
+# S.FO5 <- update(S.FO4, df=5)#
+# S.FO6 <- update(S.FO5, df=6)#
+# S.FO7 <- update(S.FO6, df=7)#
+# S.FO3 <- update(S.FO4, df=3)#
+# S.FO2 <- update(S.FO3, df=2)#
+# #
+# varexp(S.FO2,S.FO3,S.FO4,S.FO5,S.FO6,S.FO7)#
+# BICadj(S.FO2,S.FO3,S.FO4,S.FO5,S.FO6,S.FO7)#
+#S.F04 appears to have the lowest BIC, though 3 is close#
+S.FO<-S.FO4 #
+#young female height#
+anthHFY<-anthH[anthH$Sex=="Female" & anthH$Age<5,]#
+anthHFY<-purify(x="Age",y="Height",id="PID",d=anthHFY,limit=3)#
+anthHFY<-anthHFY[!is.na(anthHFY$Height),]#
+plot(Height~I(Age^0.65),data=anthHFY)#
+mplot(Age^0.65,Height,PID,data=anthHFY)#
+S.FY4<-sitar(x=Age^0.75,y=Height,PID,df=4,random="a+c",xoffset=3,data=anthHFY,control = nlmeControl(maxIter=100),verbose=TRUE)#
+#S.FY3 <- update(S.FY4, df=3)#
+#S.FY5 <- update(S.FY4, df=5)#
+#S.FY6 <- update(S.FY5, df=6)#
+#S.FY7 <- update(S.FY6, df=7)#
+#S.FY3 <- update(S.FY4, df=4)#
+#S.FY2 <- update(S.FY3, df=2)#
+# varexp(S.FY3,S.FY4,S.FY5,S.FY6,S.FY7)#
+# BICadj(S.FY3,S.FY4,S.FY5,S.FY6,S.FY7)#
+plot(S.FY4, y2par=list(col='blue'))#
+S.FY<-S.FY4#
+#
+#older male height#
+anthHMO<-anthH[anthH$Sex=="Male" & anthH$Age>5 & anthH$Age<25,]#
+anthHMO<-purify(x="Age",y="Height",id="PID",d=anthHMO,limit=3)#
+anthHMO<-anthHMO[!is.na(anthHMO$Height),]#
+outliers<-velout(Age,Height,PID,anthHMO,limit=3,linearise = TRUE)#
+#
+plot(Height~I(Age^0.65),data=anthHMO[outliers$code==0,])#
+mplot(Age,Height,PID,data=anthHMO)#
+S.MO3<-sitar(x=Age^0.65,y=Height,PID,df=3,data=anthHMO,method="REML",control = nlmeControl(maxIter=100),verbose=TRUE)#
+# plot(S.MO3, y2par=list(col='blue'),apv=TRUE)#
+#
+#S.MO5 <- update(S.MO4, df=5)#
+#S.MO6 <- update(S.MO5, df=6)#
+#S.MO7 <- update(S.MO6, df=7)#
+#S.MO4 <- update(S.MO3, df=4)#
+#S.MO2 <- update(S.MO3, df=2) won't converge#
+# varexp(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7)#
+# BICadj(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7)#
+#S.MO3 seems to win#
+# plot(S.MO3, y2par=list(col='blue'),apv=TRUE)#
+#save(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7,file="S.MO")#
+S.MO<-S.MO3#
+#
+#young male height#
+anthHMY<-anthH[anthH$Sex=="Male" & anthH$Age<7,]#
+anthHMY<-purify(x="Age",y="Height",id="PID",d=anthHMY,limit=3)#
+anthHMY<-anthHMY[!is.na(anthHMY$Height),]#
+outliers<-velout(Age,Height,PID,anthHMY,limit=3,linearise = TRUE)#
+plot(Height~I(Age^0.6),data=anthHMY)#
+mplot(Age^0.65,Height,PID,data=anthHMY[1000:1500,])#
+S.MY4<-sitar(x=Age^0.6,y=Height,PID,random="a+c",xoffset=3,df=4,data=anthHMY,control = nlmeControl(maxIter=100),verbose=TRUE)#
+# plot(S.MY4, y2par=list(col='blue'))#
+#S.MY3 <- update(S.MY4, df=3)#
+#S.MY5 <- update(S.MY4, df=5)#
+#S.MY6 <- update(S.MY5, df=6)#
+#S.MY7 <- update(S.MY6, df=7)#
+#S.MY2 <- update(S.MY3, df=2)#
+#varexp(S.MY3,S.MY4)#
+#BICadj(S.MY3,S.MY4)#
+#save(S.MY2,S.MY3,S.MY4,S.MY5,S.MY6,file="S.FM")#
+#plot(S.MY4, y2par=list(col='blue'))#
+#4df lowest BIC#
+S.MY<-S.MY4#
+#
+save(S.FO,S.FY,S.MO,S.MY,anthHFY,anthHFO,anthHMY,anthHMO,file="sitarModelsH")#
+#
+# good to here#
+#
+#weight#
+anthW<-anth[!is.na(anth$Weight) & abs(anth$WAZ.T)<3,]#
+anthW<-anthW[order(anthW$PID,anthW$Age),]#
+#
+#older female Weight#
+anthWFO<-anthW[anthW$Sex=="Female" & anthW$Age>5 & anthW$Age<22,]#
+anthWFO<-purify(x="Age",y="Weight",id="PID",d=anthWFO,limit=3)#
+anthWFO<-anthWFO[!is.na(anthWFO$Weight),]#
+outliers<-velout(Age,Weight,PID,anthWFO,limit=3,linearise = TRUE)#
+plot(Weight~I(Age^0.65),data=anthWFO[outliers$code==0,])#
+mplot(Age,Weight,PID,data=anthWFO)#
+#
+SW.FO4<-sitar(x=Age^0.65,y=Weight,PID,df=4,data=anthWFO,method="ML",control = nlmeControl(maxIter=50),verbose=TRUE)#
+# plot(SW.FO4, y2par=list(col='blue'), apv=TRUE)#
+# S.FO5 <- update(SW.FO4, df=5)#
+# S.FO6 <- update(S.FO5, df=6)#
+# S.FO7 <- update(S.FO6, df=7)#
+# S.FO3 <- update(SW.FO4, df=3)#
+# S.FO2 <- update(S.FO3, df=2)#
+# #
+# varexp(S.FO4,S.FO5)#
+# BICadj(S.FO4,S.FO5)#
+#only 4 and 5 will converge. 4 is best#
+SW.FO<-SW.FO4 #
+#
+#young female Weight#
+anthWFY<-anthW[anthW$Sex=="Female" & anthW$Age<7,]#
+anthWFY<-purify(x="Age",y="Weight",id="PID",d=anthWFY,limit=3)#
+anthWFY<-anthWFY[!is.na(anthWFY$Weight),]#
+plot(Weight~I(Age^0.75),data=anthWFY)#
+mplot(Age,Weight,PID,data=anthWFY)#
+SW.FY3<-sitar(x=Age^0.65,y=Weight,PID,random="a+c",xoffset=3,df=3,data=anthWFY,control = nlmeControl(maxIter=50),verbose=TRUE)#
+# plot(SW.FY3, y2par=list(col='blue'))#
+# SW.FY4 <- update(SW.FY3, df=4)#
+# SW.FY5 <- update(SW.FY4, df=5)#
+# SW.FY6 <- update(SW.FY5, df=6)#
+# SW.FY7 <- update(SW.FY6, df=7)#
+# SW.FY2 <- update(SW.FY3, df=2)#
+ #2,3,4, converge#
+# varexp(S.FY5,S.FY3,S.FY4)#
+# BICadj(SW.FY5,SW.FY3,SW.FY4)#
+SW.FY<-SW.FY3#
+#
+#older male Weight#
+anthWMO<-anthW[anthW$Sex=="Male" & anthW$Age>5 & anthW$Age<25,]#
+anthWMO<-purify(x="Age",y="Weight",id="PID",d=anthWMO,limit=3)#
+anthWMO<-anthWMO[!is.na(anthWMO$Weight),]#
+outliers<-velout(Age,Weight,PID,anthWMO,limit=3,linearise = TRUE)#
+#
+plot(Weight~I(Age^0.65),data=anthWMO[outliers$code==0,])#
+mplot(Age,Weight,PID,data=anthWMO)#
+SW.MO3<-sitar(x=Age^0.65,y=Weight,PID,df=3,data=anthWMO,control = nlmeControl(maxIter=100),verbose=TRUE)#
+# plot(SW.MO3, y2par=list(col='blue'),apv=TRUE)#
+# S.MO4 <- update(SW.MO3, df=4)#
+# S.MO5 <- update(S.MO4, df=5)#
+# S.MO6 <- update(S.MO5, df=6)#
+# S.MO7 <- update(S.MO6, df=7)#
+# #
+# #S.MO2 <- update(S.MO3, df=2)#
+# #
+# varexp(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7)#
+# BICadj(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7)#
+#S.MO3 seems to win#
+SW.MO<-SW.MO3#
+#
+#young male Weight#
+anthWMY<-anthW[anthW$Sex=="Male" & anthW$Age<7,]#
+anthWMY<-purify(x="Age",y="Weight",id="PID",d=anthWMY,limit=3)#
+anthWMY<-anthWMY[!is.na(anthWMY$Weight),]#
+outliers<-velout(Age,Weight,PID,anthWMY,limit=3,linearise = TRUE)#
+plot(Weight~I(Age^0.75),data=anthWMY)#
+mplot(Age^0.75,Weight,PID,data=anthWMY[1000:1500,])#
+SW.MY4<-sitar(x=Age^0.65,y=Weight,PID,random="a+c",xoffset=2,df=4,data=anthWMY,control = nlmeControl(maxIter=100),verbose=TRUE)#
+# plot(SW.MY4, y2par=list(col='blue'))#
+# SW.MY3 <- update(SW.MY4, df=3) # error here#
+# SW.MY2 <- update(SW.MY3, df=2) # error here#
+# SW.MY5 <- update(SW.MY4, df=5) # error here#
+# SW.MY6 <- update(SW.MY5, df=6) # error here#
+# SW.MY7 <- update(SW.MY6, df=7) # error here#
+# # #
+# 0#
+# varexp(S.MY2,S.MY3)#
+# BICadj(SW.MY4,SW.MY5)#
+#6df lowest BIC#
+SW.MY<-SW.MY4#
+#
+# save(SW.FO,SW.FY,SW.MO,SW.MY,anthWFY,anthWFO,anthWMY,anthWMO,file="sitarModelsW")#
+#recombine height and wight data frames to create a merged data frame for BMI #
+anthC<-merge(anthH[,c("PID","Sex","Age","Height")],anthW[,c("PID","Sex","Age","Weight")],all=TRUE)#
+#
+#BMI#
+anthC$BMI<-anthC$Weight/(anthC$Height/100)^2#
+#
+anthB<-anthC[!is.na(anthC$BMI),]#
+anthB<-anthB[order(anthB$PID,anthB$Age),]#
+#
+#older female BMI#
+anthBFO<-anthB[anthB$Sex=="Female" & anthB$Age>5 & anthB$Age<22,]#
+anthBFO<-purify(x="Age",y="BMI",id="PID",d=anthBFO,limit=3)#
+anthBFO<-anthBFO[!is.na(anthBFO$BMI),]#
+outliers<-velout(Age,BMI,PID,anthBFO,limit=3,linearise = TRUE)#
+# plot(BMI~I(Age^0.65),data=anthBFO)#
+# mplot(Age^0.4,BMI,PID,data=anthBFO)#
+#
+SB.FO3<-sitar(x=Age^0.65,y=BMI,PID,df=3,data=anthBFO,control = nlmeControl(maxIter=50),verbose=TRUE)#
+# plot(SB.FO3, y2par=list(col='blue'), apv=TRUE)#
+# SB.FO4 <- update(SB.FO3, df=4)#
+# S.FO5 <- update(S.FO4, df=5)#
+# S.FO6 <- update(S.FO5, df=6)#
+# S.FO7 <- update(S.FO6, df=7)#
+# S.FO2 <- update(S.FO3, df=2)#
+#
+# varexp(S.FO4,S.FO5)#
+# BICadj(S.FO4,S.FO5)#
+#3 only one that will converge#
+SB.FO<-SB.FO3#
+#
+#young female BMI#
+anthBFY<-anthB[anthB$Sex=="Female" & anthB$Age<7,]#
+anthBFY<-purify(x="Age",y="BMI",id="PID",d=anthBFY,limit=3)#
+anthBFY<-anthBFY[!is.na(anthBFY$BMI),]#
+plot(BMI~I(Age^0.9),data=anthBFY)#
+mplot(Age^0.9,BMI,PID,data=anthBFY)#
+SB.FY4<-sitar(x=Age^0.9,y=BMI,PID,random="a+c",xoffset=2,df=4,data=anthBFY,control = nlmeControl(maxIter=50),verbose=TRUE)#
+plot(SB.FY4, y2par=list(col='blue'))#
+# SB.FY5 <- update(SB.FY4, df=5)#
+# SB.FY6 <- update(SB.FY5, df=6)#
+# SB.FY7 <- update(SB.FY6, df=7)#
+SB.FY3 <- update(SB.FY4, df=4)#
+# SB.FY2 <- update(SB.FY3, df=2)#
+# varexp(SB.FY3,SB.FY4,SB.FY5)#
+# BICadj(SB.FY3,SB.FY4,SB.FY5)#
+#only 4 converges#
+SB.FY<-SB.FY3 # aaron: possibly supposed to be 4, check#
+#
+#older male BMI#
+anthBMO<-anthB[anthB$Sex=="Male" & anthB$Age>5 & anthB$Age<25,]#
+anthBMO<-purify(x="Age",y="BMI",id="PID",d=anthBMO,limit=3,count=3)#
+anthBMO<-anthBMO[!is.na(anthBMO$BMI),]#
+outliers<-velout(Age,BMI,PID,anthBMO,limit=3,linearise = TRUE)#
+#
+plot(BMI~I(Age^0.65),data=anthBMO[outliers$code==0,])#
+mplot(Age,BMI,PID,data=anthBMO)#
+SB.MO4<-sitar(x=Age^0.65,y=BMI,PID,df=4,data=anthBMO,control = nlmeControl(maxIter=100,minScale=0.000001),verbose=TRUE)#
+# SB.MO6<-sitar(x=Age^0.65,y=BMI,PID,df=6,data=anthBMO,control = nlmeControl(maxIter=100),verbose=TRUE)#
+# plot(SB.MO6, y2par=list(col='blue'),apv=TRUE)#
+#
+# SB.MO5 <- update(SB.MO4, df=5)#
+# SB.MO6 <- update(SB.MO5, df=6)#
+# SB.MO7 <- update(SB.MO6, df=7)#
+# SB.MO3 <- update(SB.MO4, df=3)#
+# #S.MO2 <- update(S.MO3, df=2) won't converge#
+#
+# #varexp(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7)#
+# BICadj(SB.MO4,SB.MO6)#
+#4 only one to converge#
+#plot(S.MO4, y2par=list(col='blue'),apv=TRUE)#
+#save(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7,file="S.MO")#
+SB.MO<-SB.MO4#
+#
+#young male BMI#
+anthBMY<-anthB[anthB$Sex=="Male" & anthB$Age<7,]#
+anthBMY<-purify(x="Age",y="BMI",id="PID",d=anthBMY,limit=3)#
+anthBMY<-anthBMY[!is.na(anthBMY$BMI),]#
+outliers<-velout(Age,BMI,PID,anthBMY,limit=3,linearise = TRUE)#
+plot(BMI~I(Age^0.9),data=anthBMY)#
+mplot(Age^0.9,BMI,PID,data=anthBMY)#
+SB.MY4<-sitar(x=Age^0.9,y=BMI,PID,random="a+c",xoffset=0,df=4,data=anthBMY,control = nlmeControl(maxIter=100),verbose=TRUE)#
+plot(SB.MY4, y2par=list(col='blue'))#
+# SB.MY5 <- update(SB.MY4, df=5)#
+# SB.MY6 <- update(SB.MY5, df=6)#
+# SB.MY7 <- update(SB.MY6, df=7)#
+# SB.MY3 <- update(SB.MY4, df=3)#
+# SB.MY2 <- update(SB.MY3, df=2)#
+# varexp(S.MY4,S.MY5)#
+# BICadj(SB.MY4,SB.MY5,SB.MY6,SB.MY7)#
+# #only 4 again#
+# plot(S.MY3, y2par=list(col='blue'))#
+#3df lowest BIC#
+SB.MY<-SB.MY4#
+#
+save(SB.FO,SB.FY,SB.MO,SB.MY,anthBMY,anthBMO,anthBFY,anthBFO,file="sitarModelsB")
+getwd()
+dir()
+source('File S3 Script 2 Clean data and model longitudinal velocity with SITAR.R')
