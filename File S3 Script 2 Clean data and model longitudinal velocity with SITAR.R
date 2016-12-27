@@ -1,5 +1,3 @@
-rm(list=ls())
-
 #SITAR
 library(sitar)
 
@@ -86,7 +84,6 @@ outliers<-velout(Age,Height,PID,anthHMO,limit=3,linearise = TRUE)
 plot(Height~I(Age^0.65),data=anthHMO[outliers$code==0,])
 mplot(Age,Height,PID,data=anthHMO)
 S.MO3<-sitar(x=Age^0.65,y=Height,PID,df=3,data=anthHMO,method="REML",control = nlmeControl(maxIter=100),verbose=TRUE)
-# plot(S.MO3, y2par=list(col='blue'),apv=TRUE)
 
 #S.MO5 <- update(S.MO4, df=5)
 #S.MO6 <- update(S.MO5, df=6)
@@ -96,7 +93,7 @@ S.MO3<-sitar(x=Age^0.65,y=Height,PID,df=3,data=anthHMO,method="REML",control = n
 # varexp(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7)
 # BICadj(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7)
 #S.MO3 seems to win
-# plot(S.MO3, y2par=list(col='blue'),apv=TRUE)
+plot(S.MO3, y2par=list(col='blue'),apv=TRUE)
 #save(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7,file="S.MO")
 S.MO<-S.MO3
 
@@ -108,7 +105,7 @@ outliers<-velout(Age,Height,PID,anthHMY,limit=3,linearise = TRUE)
 plot(Height~I(Age^0.6),data=anthHMY)
 mplot(Age^0.65,Height,PID,data=anthHMY[1000:1500,])
 S.MY4<-sitar(x=Age^0.6,y=Height,PID,random="a+c",xoffset=3,df=4,data=anthHMY,control = nlmeControl(maxIter=100),verbose=TRUE)
-# plot(S.MY4, y2par=list(col='blue'))
+plot(S.MY4, y2par=list(col='blue'))
 #S.MY3 <- update(S.MY4, df=3)
 #S.MY5 <- update(S.MY4, df=5)
 #S.MY6 <- update(S.MY5, df=6)
@@ -123,7 +120,6 @@ S.MY<-S.MY4
 
 save(S.FO,S.FY,S.MO,S.MY,anthHFY,anthHFO,anthHMY,anthHMO,file="sitarModelsH")
 
-# good to here
 
 #weight
 anthW<-anth[!is.na(anth$Weight) & abs(anth$WAZ.T)<3,]
@@ -140,7 +136,7 @@ plot(Weight~I(Age^0.65),data=anthWFO[outliers$code==0,])
 mplot(Age,Weight,PID,data=anthWFO)
 
 SW.FO4<-sitar(x=Age^0.65,y=Weight,PID,df=4,data=anthWFO,method="ML",control = nlmeControl(maxIter=50),verbose=TRUE)
-# plot(SW.FO4, y2par=list(col='blue'), apv=TRUE)
+plot(SW.FO4, y2par=list(col='blue'), apv=TRUE)
 # S.FO5 <- update(SW.FO4, df=5)
 # S.FO6 <- update(S.FO5, df=6)
 # S.FO7 <- update(S.FO6, df=7)
@@ -159,7 +155,7 @@ anthWFY<-anthWFY[!is.na(anthWFY$Weight),]
 plot(Weight~I(Age^0.75),data=anthWFY)
 mplot(Age,Weight,PID,data=anthWFY)
 SW.FY3<-sitar(x=Age^0.65,y=Weight,PID,random="a+c",xoffset=3,df=3,data=anthWFY,control = nlmeControl(maxIter=50),verbose=TRUE)
-# plot(SW.FY3, y2par=list(col='blue'))
+plot(SW.FY3, y2par=list(col='blue'))
 # SW.FY4 <- update(SW.FY3, df=4)
 # SW.FY5 <- update(SW.FY4, df=5)
 # SW.FY6 <- update(SW.FY5, df=6)
@@ -167,7 +163,7 @@ SW.FY3<-sitar(x=Age^0.65,y=Weight,PID,random="a+c",xoffset=3,df=3,data=anthWFY,c
 # SW.FY2 <- update(SW.FY3, df=2)
  #2,3,4, converge
 # varexp(S.FY5,S.FY3,S.FY4)
-# BICadj(SW.FY5,SW.FY3,SW.FY4)
+#BICadj(SW.FY5,SW.FY3,SW.FY4)
 SW.FY<-SW.FY3
 
 #older male Weight
@@ -179,7 +175,7 @@ outliers<-velout(Age,Weight,PID,anthWMO,limit=3,linearise = TRUE)
 plot(Weight~I(Age^0.65),data=anthWMO[outliers$code==0,])
 mplot(Age,Weight,PID,data=anthWMO)
 SW.MO3<-sitar(x=Age^0.65,y=Weight,PID,df=3,data=anthWMO,control = nlmeControl(maxIter=100),verbose=TRUE)
-# plot(SW.MO3, y2par=list(col='blue'),apv=TRUE)
+plot(SW.MO3, y2par=list(col='blue'),apv=TRUE)
 # S.MO4 <- update(SW.MO3, df=4)
 # S.MO5 <- update(S.MO4, df=5)
 # S.MO6 <- update(S.MO5, df=6)
@@ -200,20 +196,20 @@ outliers<-velout(Age,Weight,PID,anthWMY,limit=3,linearise = TRUE)
 plot(Weight~I(Age^0.75),data=anthWMY)
 mplot(Age^0.75,Weight,PID,data=anthWMY[1000:1500,])
 SW.MY4<-sitar(x=Age^0.65,y=Weight,PID,random="a+c",xoffset=2,df=4,data=anthWMY,control = nlmeControl(maxIter=100),verbose=TRUE)
-# plot(SW.MY4, y2par=list(col='blue'))
-# SW.MY3 <- update(SW.MY4, df=3) # error here
-# SW.MY2 <- update(SW.MY3, df=2) # error here
-# SW.MY5 <- update(SW.MY4, df=5) # error here
-# SW.MY6 <- update(SW.MY5, df=6) # error here
-# SW.MY7 <- update(SW.MY6, df=7) # error here
-# # 
-# 0
+plot(SW.MY4, y2par=list(col='blue'))
+# SW.MY3 <- update(SW.MY4, df=3)
+# SW.MY2 <- update(SW.MY3, df=2)
+# SW.MY5 <- update(SW.MY4, df=5)
+# S.MY6 <- update(S.MY5, df=6)
+# S.MY7 <- update(S.MY6, df=7)
+# 
+# 
 # varexp(S.MY2,S.MY3)
-# BICadj(SW.MY4,SW.MY5)
+#BICadj(SW.MY4,SW.MY5)
 #6df lowest BIC
 SW.MY<-SW.MY4
 
-# save(SW.FO,SW.FY,SW.MO,SW.MY,anthWFY,anthWFO,anthWMY,anthWMO,file="sitarModelsW")
+save(SW.FO,SW.FY,SW.MO,SW.MY,anthWFY,anthWFO,anthWMY,anthWMO,file="sitarModelsW")
 
 
 
@@ -233,11 +229,11 @@ anthBFO<-anthBFO[!is.na(anthBFO$BMI),]
 outliers<-velout(Age,BMI,PID,anthBFO,limit=3,linearise = TRUE)
 
 
-# plot(BMI~I(Age^0.65),data=anthBFO)
-# mplot(Age^0.4,BMI,PID,data=anthBFO)
+plot(BMI~I(Age^0.65),data=anthBFO)
+mplot(Age^0.4,BMI,PID,data=anthBFO)
 
 SB.FO3<-sitar(x=Age^0.65,y=BMI,PID,df=3,data=anthBFO,control = nlmeControl(maxIter=50),verbose=TRUE)
-# plot(SB.FO3, y2par=list(col='blue'), apv=TRUE)
+plot(SB.FO3, y2par=list(col='blue'), apv=TRUE)
 # SB.FO4 <- update(SB.FO3, df=4)
 # S.FO5 <- update(S.FO4, df=5)
 # S.FO6 <- update(S.FO5, df=6)
@@ -260,12 +256,12 @@ plot(SB.FY4, y2par=list(col='blue'))
 # SB.FY5 <- update(SB.FY4, df=5)
 # SB.FY6 <- update(SB.FY5, df=6)
 # SB.FY7 <- update(SB.FY6, df=7)
-SB.FY3 <- update(SB.FY4, df=4)
+# SB.FY3 <- update(SB.FY4, df=4)
 # SB.FY2 <- update(SB.FY3, df=2)
 # varexp(SB.FY3,SB.FY4,SB.FY5)
 # BICadj(SB.FY3,SB.FY4,SB.FY5)
 #only 4 converges
-SB.FY<-SB.FY3 # aaron: possibly supposed to be 4, check
+SB.FY<-SB.FY4
 
 #older male BMI
 anthBMO<-anthB[anthB$Sex=="Male" & anthB$Age>5 & anthB$Age<25,]
@@ -276,16 +272,16 @@ outliers<-velout(Age,BMI,PID,anthBMO,limit=3,linearise = TRUE)
 plot(BMI~I(Age^0.65),data=anthBMO[outliers$code==0,])
 mplot(Age,BMI,PID,data=anthBMO)
 SB.MO4<-sitar(x=Age^0.65,y=BMI,PID,df=4,data=anthBMO,control = nlmeControl(maxIter=100,minScale=0.000001),verbose=TRUE)
-# SB.MO6<-sitar(x=Age^0.65,y=BMI,PID,df=6,data=anthBMO,control = nlmeControl(maxIter=100),verbose=TRUE)
-# plot(SB.MO6, y2par=list(col='blue'),apv=TRUE)
-
+#SB.MO6<-sitar(x=Age^0.65,y=BMI,PID,df=6,data=anthBMO,control = nlmeControl(maxIter=100),verbose=TRUE)
+plot(SB.MO4, y2par=list(col='blue'),apv=TRUE)
+# 
 # SB.MO5 <- update(SB.MO4, df=5)
 # SB.MO6 <- update(SB.MO5, df=6)
 # SB.MO7 <- update(SB.MO6, df=7)
 # SB.MO3 <- update(SB.MO4, df=3)
-# #S.MO2 <- update(S.MO3, df=2) won't converge
-
-# #varexp(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7)
+# S.MO2 <- update(S.MO3, df=2) won't converge
+# 
+# varexp(S.MO3,S.MO4,S.MO5,S.MO6,S.MO7)
 # BICadj(SB.MO4,SB.MO6)
 #4 only one to converge
 #plot(S.MO4, y2par=list(col='blue'),apv=TRUE)
@@ -308,9 +304,9 @@ plot(SB.MY4, y2par=list(col='blue'))
 # SB.MY2 <- update(SB.MY3, df=2)
 # varexp(S.MY4,S.MY5)
 # BICadj(SB.MY4,SB.MY5,SB.MY6,SB.MY7)
-# #only 4 again
+# only 4 again
 # plot(S.MY3, y2par=list(col='blue'))
 #3df lowest BIC
 SB.MY<-SB.MY4
 
-# save(SB.FO,SB.FY,SB.MO,SB.MY,anthBMY,anthBMO,anthBFY,anthBFO,file="sitarModelsB")
+save(SB.FO,SB.FY,SB.MO,SB.MY,anthBMY,anthBMO,anthBFY,anthBFO,file="sitarModelsB")
