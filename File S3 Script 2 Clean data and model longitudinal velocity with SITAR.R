@@ -1,3 +1,5 @@
+rm(list=ls())
+
 #SITAR
 library(sitar)
 
