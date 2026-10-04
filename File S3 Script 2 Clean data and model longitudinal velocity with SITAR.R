@@ -1,7 +1,6 @@
-rm(list=ls())
 
 #SITAR
-library(sitar)
+library(sitar) # probably renv::install("sitar@1.0.9")
 
 purify<-function(x,y,id,d,limit=3,count=3){
   d$count<-ave(rep(1,nrow(d)),d$PID,FUN=sum)
@@ -213,8 +212,6 @@ SW.MY<-SW.MY4
 
 save(SW.FO,SW.FY,SW.MO,SW.MY,anthWFY,anthWFO,anthWMY,anthWMO,file="sitarModelsW")
 
-
-
 #recombine height and wight data frames to create a merged data frame for BMI 
 anthC<-merge(anthH[,c("PID","Sex","Age","Height")],anthW[,c("PID","Sex","Age","Weight")],all=TRUE)
 
@@ -253,8 +250,9 @@ anthBFY<-purify(x="Age",y="BMI",id="PID",d=anthBFY,limit=3)
 anthBFY<-anthBFY[!is.na(anthBFY$BMI),]
 plot(BMI~I(Age^0.9),data=anthBFY)
 mplot(Age^0.9,BMI,PID,data=anthBFY)
-SB.FY4<-sitar(x=Age^0.9,y=BMI,PID,random="a+c",xoffset=2,df=4,data=anthBFY,control = nlmeControl(maxIter=50),verbose=TRUE)
-plot(SB.FY4, y2par=list(col='blue'))
+# BAB: errors here
+# SB.FY4<-sitar(x=Age^0.9,y=BMI,PID,random="a+c",xoffset=2,df=4,data=anthBFY,control = nlmeControl(maxIter=50),verbose=TRUE)
+# plot(SB.FY4, y2par=list(col='blue'))
 # SB.FY5 <- update(SB.FY4, df=5)
 # SB.FY6 <- update(SB.FY5, df=6)
 # SB.FY7 <- update(SB.FY6, df=7)
@@ -263,7 +261,7 @@ plot(SB.FY4, y2par=list(col='blue'))
 # varexp(SB.FY3,SB.FY4,SB.FY5)
 # BICadj(SB.FY3,SB.FY4,SB.FY5)
 #only 4 converges
-SB.FY<-SB.FY4
+# SB.FY<-SB.FY4
 
 #older male BMI
 anthBMO<-anthB[anthB$Sex=="Male" & anthB$Age>5 & anthB$Age<25,]
@@ -311,4 +309,6 @@ plot(SB.MY4, y2par=list(col='blue'))
 #3df lowest BIC
 SB.MY<-SB.MY4
 
-save(SB.FO,SB.FY,SB.MO,SB.MY,anthBMY,anthBMO,anthBFY,anthBFO,file="sitarModelsB")
+save(SB.FO,SB.MO,SB.MY,anthBMY,anthBMO,anthBFY,anthBFO,file="sitarModelsB")
+
+# save(SB.FO,SB.FY,SB.MO,SB.MY,anthBMY,anthBMO,anthBFY,anthBFO,file="sitarModelsB")
